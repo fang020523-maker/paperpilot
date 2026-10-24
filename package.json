@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "postinstall": "node scripts/copy-pdf-worker.mjs",
+    "fetch:models": "node scripts/fetch-models.mjs"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^0.2.16",

@@ -55,6 +55,19 @@ async function loadLocalExtractor(): Promise<Extractor> {
     localLoading = (async () => {
       // 动态 import：服务端在 Node 加载 onnxruntime-node，浏览器加载 WASM/WebGPU
       const mod = await import("@huggingface/transformers");
+      const { existsSync } = await import("fs");
+      const path = await import("path");
+      // 优先使用 scripts/fetch-models.mjs 预下载的本地模型（离线可用、启动快）
+      const localDir = path.join(process.cwd(), "models");
+      if (existsSync(path.join(localDir, "e5-small", "onnx", "model_quantized.onnx"))) {
+        mod.env.allowRemoteModels = false;
+        mod.env.localModelPath = localDir;
+        const pipe = await mod.pipeline("feature-extraction", "e5-small", { dtype: "q8" });
+        localExtractor = pipe as unknown as Extractor;
+        return localExtractor;
+      }
+      // 无本地模型 → 远程下载，国内默认走 HF 镜像（可通过 HF_ENDPOINT 覆盖）
+      mod.env.remoteHost = process.env.HF_ENDPOINT ?? "https://hf-mirror.com";
       const pipe = await mod.pipeline("feature-extraction", "Xenova/multilingual-e5-small", {
         dtype: "q8",
       });
