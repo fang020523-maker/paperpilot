@@ -96,29 +96,43 @@ function mockChatModel(): LanguageModel {
     modelId: "mock-llm",
     defaultObjectGenerationMode: "json" as const,
     async doGenerate(options: any) {
-      const promptText = JSON.stringify(options.prompt).slice(0, 2000);
-      if (promptText.includes("classify") || promptText.includes("复杂度")) {
-        return {
-          finishReason: "stop" as const,
-          usage: { promptTokens: 10, completionTokens: 10 },
-          rawCall: { rawPrompt: null, rawSettings: {} },
-          text: JSON.stringify({
-            complexity: "factual",
-            reason: "[mock] 离线开发模式判定",
-            strategy: "single-retrieval",
-          }),
-        };
+      const promptText = JSON.stringify(options.prompt);
+      let text: string;
+      // 按调用场景返回可解析的 JSON（保证 generateObject 流水线离线可跑）
+      if (promptText.includes("复杂度") || promptText.includes("classify")) {
+        text = JSON.stringify({ complexity: "factual", reason: "[mock] 离线开发模式判定", strategy: "single-retrieval" });
+      } else if (promptText.includes("忠实度") || promptText.includes("faithfulness")) {
+        text = JSON.stringify({ faithfulness: 0.72, answerRelevancy: 0.75, contextPrecision: 0.65, contextRecall: 0.6, rationale: "[mock] 离线模式评分" });
+      } else if (promptText.includes("实体类型说明") || promptText.includes("知识图谱构建器")) {
+        text = JSON.stringify({ entities: [], relations: [] });
+      } else if (promptText.includes("上下文定位说明")) {
+        text = JSON.stringify({ contexts: ["[mock] 该片段出自论文正文，讨论方法与实验。"] });
+      } else if (promptText.includes("书目元数据")) {
+        text = JSON.stringify({ title: "Mock Paper (offline mode)", authors: [], year: null, venue: null, abstract: null });
+      } else if (promptText.includes("查询优化器") || promptText.includes("假设性的答案")) {
+        text = JSON.stringify({
+          rewrittenQuery: "[mock] 原查询（离线模式未改写）",
+          multiQueries: ["[mock] 视角一", "[mock] 视角二", "[mock] 视角三"],
+          hypotheticalAnswer: "[mock] 离线模式下不生成假设答案内容。",
+        });
+      } else if (promptText.includes("相关性 0-10") || promptText.includes("支撑度")) {
+        text = JSON.stringify({ score: 7, reason: "[mock] 离线模式默认中等相关", supportScore: 7, verdict: "[mock] 离线模式默认中等支撑" });
+      } else if (promptText.includes("主题社区")) {
+        text = "[mock] 离线模式下无法生成社区摘要：该社区围绕检索增强生成技术展开。";
+      } else {
+        text = "【离线开发模式】当前未配置 LLM 密钥（.env.local 中的 ZHIPU_API_KEY / DEEPSEEK_API_KEY）。检索、图谱与评估流水线已正常运行并返回结构化结果；配置密钥后重启即可获得真实的生成、改写与推理能力。";
       }
       return {
         finishReason: "stop" as const,
         usage: { promptTokens: 10, completionTokens: 10 },
         rawCall: { rawPrompt: null, rawSettings: {} },
-        text: "【离线开发模式】当前未配置 LLM 密钥（.env.local 中的 ZHIPU_API_KEY / DEEPSEEK_API_KEY）。检索与图谱流水线已正常运行，配置密钥后即可获得真实生成能力。",
+        text,
       };
     },
     async doStream(options: any) {
       const gen = await self.doGenerate(options);
       const text = gen.text;
+      const pieces = text.match(/[\u4e00-\u9fa5]{1,3}|\S+\s?|\s/g) ?? [text];
       return {
         finishReason: "stop" as const,
         usage: { promptTokens: 10, completionTokens: 10 },
@@ -126,7 +140,7 @@ function mockChatModel(): LanguageModel {
         stream: simulateReadableStream({
           chunkDelayInMs: 30,
           initialDelayInMs: 100,
-          chunks: text.match(/[\u4e00-\u9fa5]{1,3}|\S+\s?|\s/g) ?? [text],
+          chunks: pieces.map((p) => ({ type: "text-delta" as const, textDelta: p })),
         }),
       };
     },
