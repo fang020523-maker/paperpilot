@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { useIngest } from "@/hooks/use-ingest";
 import type { Paper } from "@/lib/types";
@@ -46,6 +47,7 @@ export default function LibraryPage() {
   const [dragOver, setDragOver] = useState(false);
   const [keyword, setKeyword] = useState("");
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [visionOn, setVisionOn] = useState(true);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const { data, isLoading, refetch } = useQuery({
@@ -138,7 +140,7 @@ export default function LibraryPage() {
           onDrop={(e) => {
             e.preventDefault();
             setDragOver(false);
-            void addFiles(Array.from(e.dataTransfer.files));
+            void addFiles(Array.from(e.dataTransfer.files), { vision: visionOn });
           }}
         >
           <input
@@ -148,7 +150,7 @@ export default function LibraryPage() {
             multiple
             className="hidden"
             onChange={(e) => {
-              void addFiles(Array.from(e.target.files ?? []));
+              void addFiles(Array.from(e.target.files ?? []), { vision: visionOn });
               e.target.value = "";
             }}
           />
@@ -157,6 +159,13 @@ export default function LibraryPage() {
           <div className="mt-1 text-xs text-muted-foreground">
             支持多文件批量导入 · PDF 在浏览器内解析 · 建议先用 3-10 篇论文体验
           </div>
+          <label
+            className="mt-3 inline-flex cursor-pointer items-center gap-2 text-xs text-muted-foreground"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Switch checked={visionOn} onCheckedChange={setVisionOn} />
+            GLM-4V 图表理解（导入时解读图表页，需智谱密钥，较慢）
+          </label>
         </div>
 
         {/* 导入任务 */}

@@ -29,14 +29,13 @@ const STAGE_LABEL: Record<string, string> = {
 
 export function useIngest(onFinished: () => void) {
   const [jobs, setJobs] = useState<FileJob[]>([]);
-  const running = useRef(false);
 
   const patch = useCallback((id: string, p: Partial<FileJob>) => {
     setJobs((prev) => prev.map((j) => (j.id === id ? { ...j, ...p } : j)));
   }, []);
 
   const addFiles = useCallback(
-    async (files: File[]) => {
+    async (files: File[], opts?: { vision?: boolean }) => {
       const pdfs = files.filter((f) => f.name.toLowerCase().endsWith(".pdf"));
       if (pdfs.length === 0) {
         toast.error("请上传 PDF 格式的论文文件");
@@ -60,6 +59,35 @@ export function useIngest(onFinished: () => void) {
           const textLen = parsed.pages.reduce((s, p) => s + p.text.length, 0);
           if (textLen < 300) {
             throw new Error("PDF 中未提取到足够文本（可能是扫描件）");
+          }
+
+          // 阶段 1.5：GLM-4V 图表理解（可选，失败静默跳过）
+          if (opts?.vision) {
+            patch(job.id, { stage: "vision", stageDetail: "GLM-4V 解读图表页…", percent: 25 });
+            try {
+              const { renderPdfPages } = await import("@/lib/vision/render");
+              const pageMax = Math.min(parsed.pages.length, 10);
+              const images = await renderPdfPages(
+                file,
+                Array.from({ length: pageMax }, (_, i) => i + 1)
+              );
+              const vres = await fetch("/api/vision", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ images, paperTitle: file.name }),
+              });
+              if (vres.ok) {
+                const { descriptions } = (await vres.json()) as {
+                  descriptions: { page: number; description: string }[];
+                };
+                for (const d of descriptions) {
+                  parsed.pages.push({ page: d.page, text: `【图表解读】${d.description}` });
+                }
+                parsed.pages.sort((a, b) => a.page - b.page);
+              }
+            } catch {
+              /* 无密钥/网络问题 → 跳过图表增强 */
+            }
           }
 
           // 阶段二：服务端增强索引（SSE 进度）

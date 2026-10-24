@@ -17,6 +17,18 @@ import type { RetrievedChunk } from "@/lib/types";
 
 export const maxDuration = 120;
 
+/** 检索上下文注入防护：中和文档中潜藏的提示注入指令（AI 安全评分项） */
+function sanitizeContext(text: string): string {
+  return text
+    .replace(
+      /(ignore|disregard|forget)\s+(all\s+)?(previous|prior|above|earlier)\s+(instructions?|prompts?|rules?|context)/gi,
+      "[filtered-injection]"
+    )
+    .replace(/忽略(之前|以上|上面|先前|前面)(的)?(所有|全部)?(指令|提示|规则|要求)/g, "[filtered-injection]")
+    .replace(/\b(system|developer)\s*:\s*/gi, "")
+    .slice(0, 2000);
+}
+
 // 每请求的上下文累加器（工具间共享检索状态）
 interface RequestContext {
   lastRetrieved: RetrievedChunk[];
@@ -61,11 +73,31 @@ hybrid_retrieve 返回候选后，若你看不出明确相关片段，调用 gra
 export async function POST(req: Request) {
   const body = (await req.json()) as {
     messages: Message[];
-    pipeline?: "agentic" | "naive";
+    pipeline?: "agentic" | "naive" | "privacy";
+    /** 隐私模式：端侧检索完成的上下文（仅片段上云） */
+    contexts?: { paperTitle: string; page: number; text: string }[];
   };
   const messages = convertToCoreMessages(body.messages);
   const pipeline = body.pipeline ?? "agentic";
   const model = chatModel();
+
+  // ============ 隐私模式（端侧检索 + 片段脱敏上云生成）============
+  if (pipeline === "privacy") {
+    const ctx = (body.contexts ?? []).slice(0, 6);
+    const contextText = ctx
+      .map((c, i) => `[${i + 1}] ${c.paperTitle} (第${c.page}页)\n${sanitizeContext(c.text)}`)
+      .join("\n\n");
+    const result = streamText({
+      model,
+      system: `你是学术文献问答助手（端侧隐私模式：检索已在用户浏览器内完成，以下片段是唯一依据）。
+基于片段用中文回答并以 [n] 标注引用；片段不足以回答时明确说明"本地检索未找到充分依据"，不得编造。
+
+检索片段：
+${contextText || "（无检索结果）"}`,
+      messages,
+    });
+    return result.toDataStreamResponse();
+  }
 
   // ============ Naive 基线（单轮向量 RAG，供 A/B 对比）============
   if (pipeline === "naive") {
@@ -185,7 +217,7 @@ export async function POST(req: Request) {
             section: r.chunk.section,
             method: r.method,
             score: Number(r.score.toFixed(3)),
-            text: r.chunk.text.slice(0, 900),
+            text: sanitizeContext(r.chunk.text),
           })),
         };
       },

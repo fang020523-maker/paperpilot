@@ -7,10 +7,12 @@ import {
   ArrowUp,
   BookOpenText,
   ChevronsDownUp,
+  Cpu,
   FileText,
   FlaskConical,
   Loader2,
   RotateCcw,
+  ShieldCheck,
   Square,
   Zap,
 } from "lucide-react";
@@ -20,8 +22,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Markdown } from "@/components/chat/markdown";
 import { PipelineTimeline, type StepPart } from "@/components/chat/pipeline-timeline";
+import { SpeakButton, VoiceInput } from "@/components/chat/voice";
 import { useEvalStore } from "@/stores/eval-history";
+import { useLocalKb } from "@/hooks/use-local-kb";
 import { cn } from "@/lib/utils";
+
+type Pipeline = "agentic" | "naive" | "privacy";
 
 const SUGGESTIONS = [
   "Self-RAG 通过什么机制控制检索时机？",
@@ -95,17 +101,25 @@ function RagasBar({ scores }: { scores: { faithfulness: number; answerRelevancy:
 }
 
 export function ChatView() {
-  const [pipeline, setPipeline] = useState<"agentic" | "naive">("agentic");
+  const [pipeline, setPipeline] = useState<Pipeline>("agentic");
   const [input, setInput] = useState("");
   const [showTimeline, setShowTimeline] = useState(true);
   const [ragas, setRagas] = useState<Record<string, Record<string, number>>>({});
   const [evaluating, setEvaluating] = useState<Record<string, boolean>>({});
+  const privacyQuestions = useRef<Set<string>>(new Set());
   const bottomRef = useRef<HTMLDivElement>(null);
   const addRecord = useEvalStore((s) => s.addRecord);
+  const localKb = useLocalKb();
+
+  // 开启隐私模式 → 同步端侧向量库（浏览器内 WebGPU/WASM 嵌入）
+  useEffect(() => {
+    if (pipeline === "privacy") void localKb.ensureSynced();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pipeline]);
 
   const { messages, append, isLoading, stop, setMessages, error } = useChat({
     api: "/api/chat",
-    body: { pipeline },
+    body: { pipeline: pipeline === "privacy" ? "privacy" : pipeline },
   });
 
   useEffect(() => {
@@ -131,7 +145,7 @@ export function ChatView() {
         question: qText,
         answer: answerText,
         contexts,
-        pipeline,
+        pipeline: pipeline === "naive" ? "naive" : "agentic",
         methods: steps.map((s) => s.toolName),
       }),
     })
@@ -151,7 +165,7 @@ export function ChatView() {
             latencyMs: scores.latencyMs ?? 0,
             methods: steps.map((s) => s.toolName),
           },
-          pipeline,
+          pipeline: pipeline === "naive" ? "naive" : "agentic",
           createdAt: new Date().toISOString(),
         });
       })
@@ -159,10 +173,42 @@ export function ChatView() {
       .finally(() => setEvaluating((e) => ({ ...e, [last.id]: false })));
   }, [isLoading, messages, pipeline, ragas, evaluating, addRecord]);
 
-  const send = (text: string) => {
+  const send = async (text: string) => {
     const t = text.trim();
     if (!t || isLoading) return;
     setInput("");
+
+    if (pipeline === "privacy") {
+      // 端侧检索：浏览器内嵌入 + IndexedDB 向量库，仅命中片段上云
+      let hits: Awaited<ReturnType<typeof localKb.searchLocally>> = [];
+      try {
+        const ok = await localKb.ensureSynced();
+        if (ok) hits = await localKb.searchLocally(t, 5);
+      } catch {
+        toast.error("端侧检索失败，请检查浏览器兼容性");
+        return;
+      }
+      if (hits.length === 0) {
+        toast.warning("本地向量库为空：请先导入文献并等待端侧同步完成");
+        return;
+      }
+      privacyQuestions.current.add(t);
+      void append(
+        { role: "user", content: t },
+        {
+          body: {
+            pipeline: "privacy",
+            contexts: hits.map((h) => ({
+              paperTitle: h.chunk.paperTitle,
+              page: h.chunk.page,
+              text: h.chunk.text,
+            })),
+          },
+        }
+      );
+      return;
+    }
+
     void append({ role: "user", content: t });
   };
 
@@ -183,7 +229,7 @@ export function ChatView() {
           </span>
         </div>
         <div className="ml-auto flex items-center gap-2">
-          {/* 管线 A/B 切换 */}
+          {/* 管线切换：Agentic / 基线 / 端侧隐私 */}
           <div className="flex rounded-lg border p-0.5 text-[11px]">
             <button
               className={cn(
@@ -203,7 +249,31 @@ export function ChatView() {
             >
               <FlaskConical className="size-3" /> 基线
             </button>
+            <button
+              className={cn(
+                "flex items-center gap-1 rounded-md px-2.5 py-1 transition-colors",
+                pipeline === "privacy"
+                  ? "bg-emerald-600 text-white"
+                  : "text-muted-foreground"
+              )}
+              onClick={() => setPipeline("privacy")}
+              title="端侧隐私模式：嵌入与检索在浏览器完成，仅命中片段上云生成"
+            >
+              <ShieldCheck className="size-3" /> 隐私
+            </button>
           </div>
+          {pipeline === "privacy" && (
+            <Badge variant="outline" className="gap-1 border-emerald-600/40 font-mono text-[9px] text-emerald-500">
+              <Cpu className="size-3" />
+              {localKb.status === "syncing"
+                ? `端侧嵌入 ${localKb.progress}%`
+                : localKb.status === "ready"
+                  ? `${localKb.device === "webgpu" ? "WebGPU" : "WASM"} · ${localKb.chunkCount} 片段`
+                  : localKb.status === "error"
+                    ? "端侧同步失败"
+                    : "待同步"}
+            </Badge>
+          )}
           {hasMessages && (
             <>
               <Button
@@ -262,11 +332,23 @@ export function ChatView() {
 
           {messages.map((m) => {
             if (m.role === "user") {
+              const text = m.parts?.find((p) => p.type === "text")?.text ?? "";
+              const isPrivacy = privacyQuestions.current.has(text);
               return (
-                <div key={m.id} className="flex justify-end">
-                  <div className="max-w-[85%] rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-sm text-primary-foreground leading-relaxed whitespace-pre-wrap">
-                    {m.parts?.find((p) => p.type === "text")?.text ?? ""}
+                <div key={m.id} className="space-y-1.5">
+                  <div className="flex justify-end">
+                    <div className="max-w-[85%] rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-sm text-primary-foreground leading-relaxed whitespace-pre-wrap">
+                      {text}
+                    </div>
                   </div>
+                  {isPrivacy && (
+                    <div className="flex justify-end">
+                      <span className="flex items-center gap-1.5 rounded-full border border-emerald-600/30 bg-emerald-600/10 px-2.5 py-0.5 text-[10px] text-emerald-500">
+                        <ShieldCheck className="size-3" />
+                        端侧检索完成：浏览器 {localKb.device === "webgpu" ? "WebGPU" : "WASM"} 嵌入 · 仅命中片段参与生成
+                      </span>
+                    </div>
+                  )}
                 </div>
               );
             }
@@ -282,6 +364,16 @@ export function ChatView() {
                 )}
                 {(answerText || !streaming) && (
                   <div className="rounded-2xl rounded-tl-md border bg-card/70 px-5 py-4">
+                    <div className="mb-2 flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                        <span className="flex size-5 items-center justify-center rounded-md bg-primary/15">
+                          <BookOpenText className="size-3 text-primary" />
+                        </span>
+                        PaperPilot
+                        {streaming && <Loader2 className="size-3 animate-spin" />}
+                      </div>
+                      {answerText && !streaming && <SpeakButton text={answerText} />}
+                    </div>
                     {answerText ? (
                       <div className={cn(streaming && "[&>div>*:last-child]:after:content-['▍']")}>
                         <Markdown>{answerText}</Markdown>
@@ -355,6 +447,7 @@ export function ChatView() {
               rows={1}
             />
             <div className="absolute bottom-2.5 right-2.5 flex items-center gap-1.5">
+              <VoiceInput onTranscript={(t) => setInput((prev) => (prev ? `${prev} ${t}` : t))} />
               {isLoading ? (
                 <Button size="icon" className="size-8 rounded-xl" onClick={() => stop()} title="停止生成">
                   <Square className="size-3.5" />
@@ -364,7 +457,7 @@ export function ChatView() {
                   size="icon"
                   className="size-8 rounded-xl"
                   disabled={!input.trim()}
-                  onClick={() => send(input)}
+                  onClick={() => void send(input)}
                   title="发送 (Enter)"
                 >
                   <ArrowUp className="size-4" />

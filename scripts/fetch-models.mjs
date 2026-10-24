@@ -37,4 +37,15 @@ for (const f of FILES) {
   console.log(`↓ 下载 ${f} …`);
   fetch(`${MIRROR}/Xenova/multilingual-e5-small/resolve/main/${f}`, dest);
 }
-console.log("[fetch-models] 完成。运行时将直接使用本地模型（不联网）。");
+
+// 同步一份到 public/models 供浏览器端同源加载（隐私模式零外联）
+const publicDir = path.join(process.cwd(), "public", "models", "e5-small");
+for (const f of FILES) {
+  const src = path.join(targetDir, f);
+  const dest = path.join(publicDir, f);
+  if (!existsSync(dest)) {
+    mkdirSync(path.dirname(dest), { recursive: true });
+    spawnSync("cmd", ["/c", "copy", "/Y", src, dest], { stdio: "ignore" });
+  }
+}
+console.log("[fetch-models] 完成。服务端(models/)与浏览器(public/models/)均可离线使用。");
