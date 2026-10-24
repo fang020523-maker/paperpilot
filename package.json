@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "postinstall": "node scripts/copy-pdf-worker.mjs",
-    "fetch:models": "node scripts/fetch-models.mjs"
+    "fetch:models": "node scripts/fetch-models.mjs",
+    "fetch:demo": "node scripts/fetch-demo-papers.mjs",
+    "seed:demo": "node scripts/seed-demo.mjs"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^0.2.16",

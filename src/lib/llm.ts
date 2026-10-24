@@ -108,7 +108,8 @@ function mockChatModel(): LanguageModel {
       } else if (promptText.includes("上下文定位说明")) {
         text = JSON.stringify({ contexts: ["[mock] 该片段出自论文正文，讨论方法与实验。"] });
       } else if (promptText.includes("书目元数据")) {
-        text = JSON.stringify({ title: "Mock Paper (offline mode)", authors: [], year: null, venue: null, abstract: null });
+        // 返回空值让启发式抽取结果生效（保留真实标题/作者/arXiv号）
+        text = JSON.stringify({ title: "", authors: [], year: null, venue: null, abstract: null });
       } else if (promptText.includes("查询优化器") || promptText.includes("假设性的答案")) {
         text = JSON.stringify({
           rewrittenQuery: "[mock] 原查询（离线模式未改写）",

@@ -1,0 +1,9 @@
+node_modules
+.next
+.data
+models
+public/models
+demo-papers
+*.pdf
+.env*
+.git

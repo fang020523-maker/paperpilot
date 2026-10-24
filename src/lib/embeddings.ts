@@ -81,11 +81,18 @@ async function loadLocalExtractor(): Promise<Extractor> {
 async function localEmbed(texts: string[], kind: "query" | "passage"): Promise<number[][]> {
   const extractor = await loadLocalExtractor();
   const prefixed = texts.map((t) => `${kind}: ${t}`);
-  const out = await extractor(prefixed, { pooling: "mean", normalize: true });
-  const dim = out.dims[out.dims.length - 1];
+  // 分批推理：大批量一次性送入 ONNX 会触发 bad allocation（尤其长文本）
+  const BATCH = 8;
   const vectors: number[][] = [];
-  for (let i = 0; i < texts.length; i++) {
-    vectors.push(Array.from(out.data.slice(i * dim, (i + 1) * dim)).map((v) => Number(v.toFixed(5))));
+  for (let i = 0; i < prefixed.length; i += BATCH) {
+    const batch = prefixed.slice(i, i + BATCH);
+    const out = await extractor(batch, { pooling: "mean", normalize: true });
+    const dim = out.dims[out.dims.length - 1];
+    for (let j = 0; j < batch.length; j++) {
+      vectors.push(
+        Array.from(out.data.slice(j * dim, (j + 1) * dim)).map((v) => Number(v.toFixed(5)))
+      );
+    }
   }
   return vectors;
 }

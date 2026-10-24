@@ -46,3 +46,4 @@ next-env.d.ts
 .env*.local
 models/e5-small/onnx/*.onnx
 public/models/
+demo-papers/*.pdf
