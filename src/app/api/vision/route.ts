@@ -1,4 +1,4 @@
-import { zhipuKey } from "@/lib/llm";
+import { nextZhipuKey } from "@/lib/llm";
 
 export const maxDuration = 120;
 
@@ -10,7 +10,7 @@ const ZHIPU_BASE = "https://open.bigmodel.cn/api/paas/v4";
  * 返回每页的图表解读；纯文本页返回空 description。
  */
 export async function POST(req: Request) {
-  const key = zhipuKey();
+  const key = nextZhipuKey();
   if (!key) {
     return Response.json(
       { error: "图表理解需要智谱 API 密钥（GLM-4V）——配置 .env.local 后可用" },

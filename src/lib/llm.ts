@@ -43,13 +43,27 @@ export const NO_THINKING = {
   zhipu: { thinking: { type: "disabled" as const } },
 } as const;
 
-const zhipu =
-  zhipuKey() &&
-  createOpenAICompatible({
-    name: "zhipu",
-    baseURL: ZHIPU_BASE,
-    apiKey: zhipuKey(),
-  });
+/**
+ * 多密钥池：ZHIPU_API_KEY 支持逗号分隔多把 key，请求按轮询分摊
+ * （免费/受限账号各有速率限制，多 key 轮换可显著降低触发风控的概率）。
+ */
+const zhipuKeys = (env("ZHIPU_API_KEY") ?? "")
+  .split(",")
+  .map((k) => k.trim())
+  .filter(Boolean);
+
+const zhipuPool = zhipuKeys.map((key) =>
+  createOpenAICompatible({ name: "zhipu", baseURL: ZHIPU_BASE, apiKey: key })
+);
+let zhipuCursor = 0;
+function nextZhipu() {
+  if (zhipuPool.length === 0) return undefined;
+  const provider = zhipuPool[zhipuCursor % zhipuPool.length];
+  zhipuCursor++;
+  return provider;
+}
+
+const zhipu = zhipuPool.length > 0 ? nextZhipu() : undefined;
 
 const deepseek =
   deepseekKey() &&
@@ -61,27 +75,38 @@ const deepseek =
 
 /**
  * 主生成模型：智谱优先，DeepSeek 兜底，无密钥时 mock（保证开箱可跑）。
+ * 智谱内部：多 key 轮询 + 4.6↔flash 模型级回退（包装器为模块级单例，熔断状态跨请求持久）。
  */
+let chatModelSingleton: LanguageModel | null = null;
 export function chatModel(preference?: "zhipu" | "deepseek"): LanguageModel {
   if (preference === "deepseek" && deepseek) return deepseek.chatModel(DEEPSEEK_CHAT_MODEL);
   if (preference === "zhipu" && zhipu) return zhipu.chatModel(ZHIPU_CHAT_MODEL);
-  if (zhipu)
-    // 主模型 4.6 触发限流时回退 flash（账号风控有粘性，flash 单发常可用）
-    return withFallback(zhipu.chatModel(ZHIPU_CHAT_MODEL), zhipu.chatModel("glm-4-flash"));
+  if (zhipu) {
+    if (!chatModelSingleton) {
+      chatModelSingleton = withFallback(
+        zhipu.chatModel(ZHIPU_CHAT_MODEL),
+        zhipu.chatModel("glm-4-flash")
+      );
+    }
+    return chatModelSingleton;
+  }
   if (deepseek) return deepseek.chatModel(DEEPSEEK_CHAT_MODEL);
   return mockChatModel();
 }
 
 /**
- * 轻量任务模型（打分/重写/抽取）：优先免费的 glm-4-flash，账号级封禁/限流时自动回退 glm-4.6。
+ * 轻量任务模型（打分/重写/抽取）：flash 优先（免费），被封/限流自动回退 glm-4.6。
  */
+let fastModelSingleton: LanguageModel | null = null;
 export function fastModel(): LanguageModel {
   if (zhipu) {
-    // 账号可能对特定子模型返回 1314/1113（如 flash 被锁而 4.6 可用），包装自动回退
-    return withFallback(
-      zhipu.chatModel("glm-4-flash"),
-      zhipu.chatModel(ZHIPU_CHAT_MODEL)
-    );
+    if (!fastModelSingleton) {
+      fastModelSingleton = withFallback(
+        zhipu.chatModel("glm-4-flash"),
+        zhipu.chatModel(ZHIPU_CHAT_MODEL)
+      );
+    }
+    return fastModelSingleton;
   }
   if (deepseek) return deepseek.chatModel(DEEPSEEK_CHAT_MODEL);
   return mockChatModel();
@@ -138,17 +163,29 @@ function withFallback(primary: LanguageModel, fallback: LanguageModel): Language
 }
 
 export function llmStatus(): LlmStatus {
-  const hasZhipu = !!zhipu;
+  const hasZhipu = zhipuPool.length > 0;
   const hasDeepseek = !!deepseek;
   const mode = env("EMBEDDING_MODE") ?? "auto";
   return {
     primary: hasZhipu ? "zhipu" : hasDeepseek ? "deepseek" : "mock",
     hasZhipu,
     hasDeepseek,
-    chatModel: hasZhipu ? ZHIPU_CHAT_MODEL : hasDeepseek ? DEEPSEEK_CHAT_MODEL : "mock-llm",
+    chatModel: hasZhipu
+      ? `${ZHIPU_CHAT_MODEL}${zhipuPool.length > 1 ? ` ×${zhipuPool.length}keys` : ""}`
+      : hasDeepseek
+        ? DEEPSEEK_CHAT_MODEL
+        : "mock-llm",
     embeddingMode: mode === "local" || !hasZhipu ? "local" : "cloud",
     embeddingModeRaw: mode,
   };
+}
+
+/** embeddings 直连 fetch 用：多 key 轮询取下一把 */
+export function nextZhipuKey(): string | undefined {
+  if (zhipuKeys.length === 0) return undefined;
+  const key = zhipuKeys[zhipuCursor % zhipuKeys.length];
+  zhipuCursor++;
+  return key;
 }
 
 // ============ Mock 模型（离线开发联调用）============
