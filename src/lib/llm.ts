@@ -33,6 +33,16 @@ export const ZHIPU_CHAT_MODEL = env("ZHIPU_CHAT_MODEL") ?? "glm-4.6";
 export const ZHIPU_EMBEDDING_MODEL = env("ZHIPU_EMBEDDING_MODEL") ?? "embedding-3";
 export const DEEPSEEK_CHAT_MODEL = env("DEEPSEEK_CHAT_MODEL") ?? "deepseek-chat";
 
+/**
+ * GLM-4.6/4.5 默认开启深度思考（reasoning_content），
+ * Agent 多步场景每步都思考会显著拖慢且吞噬 max_tokens。
+ * @ai-sdk/openai-compatible 会把 providerOptions[providerName] 透传进请求体，
+ * 已实测：加此参数后 glm-4.6 直接输出内容、不再思考。
+ */
+export const NO_THINKING = {
+  zhipu: { thinking: { type: "disabled" as const } },
+} as const;
+
 const zhipu =
   zhipuKey() &&
   createOpenAICompatible({

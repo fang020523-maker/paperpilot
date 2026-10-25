@@ -11,20 +11,21 @@ import { generateObject } from "ai";
 import { z } from "zod";
 import type { Chunk, Paper, RetrievedChunk, RewriteStepResult } from "../types";
 import { getEmbeddingChannel } from "../embeddings";
-import { fastModel } from "../llm";
+import { fastModel, NO_THINKING } from "../llm";
 import { getKB } from "../kb/store";
 
 // ---------- 1. 查询扩展 ----------
 
 const ExpandSchema = z.object({
-  rewrittenQuery: z.string().max(300),
-  multiQueries: z.array(z.string().max(300)).length(3),
-  hypotheticalAnswer: z.string().max(800),
+  rewrittenQuery: z.string().nullable().optional(),
+  multiQueries: z.array(z.string().nullable()).optional(),
+  hypotheticalAnswer: z.string().nullable().optional(),
 });
 
 export async function expandQuery(query: string, conversationContext?: string): Promise<RewriteStepResult> {
   try {
     const { object } = await generateObject({
+      providerOptions: NO_THINKING,
       model: fastModel(),
       schema: ExpandSchema,
       prompt: `你是学术检索查询优化器。用户正在向一个学术论文知识库提问（语料为 RAG/LLM 领域论文）。
@@ -41,9 +42,9 @@ ${conversationContext ? `对话上文（如需指代消解）: ${conversationCon
     });
     return {
       originalQuery: query,
-      rewrittenQuery: object.rewrittenQuery,
-      multiQueries: object.multiQueries,
-      hypotheticalAnswer: object.hypotheticalAnswer,
+      rewrittenQuery: (object.rewrittenQuery ?? "").trim().slice(0, 300) || query,
+      multiQueries: (object.multiQueries ?? []).map((q) => (q ?? "").trim().slice(0, 300)).filter(Boolean).slice(0, 3),
+      hypotheticalAnswer: (object.hypotheticalAnswer ?? "").trim().slice(0, 800) || undefined,
     };
   } catch {
     // 降级：原查询直检
@@ -153,6 +154,7 @@ export async function rerankCandidates(
   if (candidates.length <= 1) return candidates;
   try {
     const { object } = await generateObject({
+      providerOptions: NO_THINKING,
       model: fastModel(),
       schema: RerankSchema,
       prompt: `对以下检索候选片段按与问题的相关性打分（0-10，10=直接回答问题，5=部分相关，0=无关）。

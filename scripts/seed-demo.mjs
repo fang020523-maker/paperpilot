@@ -55,6 +55,7 @@ for (const f of files) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ filename: f, pages }),
+    signal: AbortSignal.timeout(1800000), // 30min：抽取退避期间服务端可能长时间静默
   });
   if (!res.ok || !res.body) {
     console.log(`✗ ${f}: HTTP ${res.status}`);

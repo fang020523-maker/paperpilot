@@ -1,5 +1,5 @@
 import { streamText, convertToCoreMessages, type Message } from "ai";
-import { chatModel } from "@/lib/llm";
+import { chatModel, NO_THINKING } from "@/lib/llm";
 import {
   AGENT_SYSTEM_PROMPT,
   buildAgentTools,
@@ -43,6 +43,7 @@ export async function POST(req: Request) {
       contextText = "";
     }
     const result = streamText({
+      providerOptions: NO_THINKING,
       model,
       system: `你是学术文献问答助手（朴素 RAG 基线模式）。基于以下检索片段回答，用 [n] 标注引用；证据不足时明确说明。\n\n检索片段：\n${contextText || "（无检索结果）"}`,
       messages,
@@ -57,6 +58,7 @@ export async function POST(req: Request) {
       .map((c, i) => `[${i + 1}] ${c.paperTitle} (第${c.page}页)\n${sanitizeContext(c.text)}`)
       .join("\n\n");
     const result = streamText({
+      providerOptions: NO_THINKING,
       model,
       system: `你是学术文献问答助手（端侧隐私模式：检索已在用户浏览器内完成，以下片段是唯一依据）。
 基于片段用中文回答并以 [n] 标注引用；片段不足以回答时明确说明"本地检索未找到充分依据"，不得编造。
@@ -73,6 +75,7 @@ ${contextText || "（无检索结果）"}`,
   const tools = buildAgentTools(requestCtx);
 
   const result = streamText({
+    providerOptions: NO_THINKING,
     model,
     system: AGENT_SYSTEM_PROMPT,
     messages,

@@ -24,8 +24,9 @@ export async function POST(req: Request) {
   const images = (body.images ?? []).slice(0, 10);
   if (images.length === 0) return Response.json({ descriptions: [] });
 
-  const results = await Promise.all(
-    images.map(async (img) => {
+  const out = [];
+  for (const img of images) {
+      out.push(await (async () => {
       try {
         const res = await fetch(`${ZHIPU_BASE}/chat/completions`, {
           method: "POST",
@@ -54,8 +55,8 @@ export async function POST(req: Request) {
       } catch {
         return { page: img.page, description: "" };
       }
-    })
-  );
+      })());
+  }
 
-  return Response.json({ descriptions: results.filter((r) => r.description) });
+  return Response.json({ descriptions: out.filter((r) => r.description) });
 }

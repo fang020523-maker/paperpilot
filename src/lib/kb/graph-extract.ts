@@ -11,30 +11,73 @@ import { z } from "zod";
 import Graph from "graphology";
 import louvain from "graphology-communities-louvain";
 import type { Chunk, Community, EntityType, GraphEntity, GraphRelation, Paper } from "../types";
-import { fastModel } from "../llm";
+import { chatModel, fastModel, NO_THINKING } from "../llm";
 
 const ENTITY_TYPES: EntityType[] = [
   "method", "dataset", "metric", "model", "task", "finding", "author", "institution",
 ];
 
-const ExtractionSchema = z.object({
+/**
+ * 面向 LLM 的宽松 schema：不在模型输出上做严格 max/min/enum 约束
+ * （任何越界值都会让 zod 整体校验失败，长文本下几乎必失败），
+ * 业务净化（截断/类型映射/过滤）在 sanitizeExtraction 中完成。
+ */
+const RawExtractionSchema = z.object({
   entities: z.array(
     z.object({
-      name: z.string().min(1).max(80),
-      type: z.enum(["method", "dataset", "metric", "model", "task", "finding", "author", "institution"]),
-      aliases: z.array(z.string().max(80)).max(5).optional(),
+      name: z.string().nullable().optional(),
+      type: z.string().nullable().optional(),
+      aliases: z.array(z.string().nullable()).optional(),
     })
-  ).max(20),
+  ),
   relations: z.array(
     z.object({
-      source: z.string().min(1).max(80),
-      target: z.string().min(1).max(80),
-      label: z.string().min(1).max(40),
-      sentence: z.string().max(400),
+      source: z.string().nullable().optional(),
+      target: z.string().nullable().optional(),
+      label: z.string().nullable().optional(),
+      sentence: z.string().nullable().optional(),
     })
-  ).max(15),
+  ),
 });
-type Extraction = z.infer<typeof ExtractionSchema>;
+
+interface Extraction {
+  entities: { name: string; type: EntityType; aliases: string[] }[];
+  relations: { source: string; target: string; label: string; sentence: string }[];
+}
+
+const VALID_TYPES = new Set<string>(ENTITY_TYPES);
+
+/** LLM 原始输出 → 净化后的合规抽取（截断、非法类型映射、空值过滤） */
+function sanitizeExtraction(raw: z.infer<typeof RawExtractionSchema>): Extraction {
+  const entities = (raw.entities ?? [])
+    .map((e) => ({
+      name: (e.name ?? "").trim().slice(0, 80),
+      type: (VALID_TYPES.has(e.type ?? "") ? e.type : "method") as EntityType,
+      aliases: (e.aliases ?? [])
+        .map((a) => (a ?? "").trim().slice(0, 80))
+        .filter(Boolean)
+        .slice(0, 5),
+    }))
+    .filter((e) => e.name.length > 0)
+    .slice(0, 20);
+  const validNames = new Set(entities.map((e) => e.name.toLowerCase()));
+  const relations = (raw.relations ?? [])
+    .map((r) => ({
+      source: (r.source ?? "").trim().slice(0, 80),
+      target: (r.target ?? "").trim().slice(0, 80),
+      label: (r.label ?? "").trim().slice(0, 40) || "related-to",
+      sentence: (r.sentence ?? "").slice(0, 400),
+    }))
+    .filter(
+      (r) =>
+        r.source &&
+        r.target &&
+        validNames.has(r.source.toLowerCase()) &&
+        validNames.has(r.target.toLowerCase())
+    )
+    .slice(0, 15);
+  return { entities, relations };
+}
 
 export interface GraphBuildResult {
   entities: GraphEntity[];
@@ -53,13 +96,10 @@ export function normalizeName(name: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-/** 单 chunk 抽取 */
+/** 单 chunk 抽取（含 429 限流指数退避重试） */
 async function extractChunk(paper: Paper, chunk: Chunk): Promise<Extraction> {
   const text = chunk.text.slice(0, 3500);
-  const { object } = await generateObject({
-    model: fastModel(),
-    schema: ExtractionSchema,
-    prompt: `你是一个学术知识图谱构建器。从以下论文片段中抽取实体与关系。
+  const prompt = `你是一个学术知识图谱构建器。从以下论文片段中抽取实体与关系。
 
 论文标题: ${paper.title}
 章节: ${chunk.section ?? "未知"} (第${chunk.page}页)
@@ -85,31 +125,60 @@ async function extractChunk(paper: Paper, chunk: Chunk): Promise<Extraction> {
 论文片段：
 """
 ${text}
-"""`,
-  });
-  return object;
+"""`;
+
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      const { object } = await generateObject({
+        providerOptions: NO_THINKING,
+        model: fastModel(),
+        schema: RawExtractionSchema,
+        prompt,
+      });
+      return sanitizeExtraction(object);
+    } catch (err) {
+      lastError = err;
+      const msg = err instanceof Error ? err.message : "";
+      if (msg.includes("429") || /rate|速率|1302|1305/.test(msg)) {
+        await new Promise((r) => setTimeout(r, [5000, 15000, 60000, 120000][attempt] ?? 180000));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastError;
 }
 
 /** 合并单篇文献的全部抽取结果 → 实体/关系映射（以规范键为键） */
 export async function extractPaperGraph(
   paper: Paper,
   chunks: Chunk[],
-  concurrency = 4
+  concurrency = 1
 ): Promise<{ entities: Map<string, GraphEntity>; relations: Map<string, GraphRelation> }> {
   const entities = new Map<string, GraphEntity>();
   const relations = new Map<string, GraphRelation>();
-  const queue = [...chunks];
+  // 参考文献块对图谱无贡献（且占篇幅 20-30%），直接跳过以省配额与时间
+  const usable = chunks.filter(
+    (c) => !/references?|bibliography|参考文献/i.test(c.section ?? "")
+  );
+  const queue = [...usable];
   let failures = 0;
 
   const worker = async () => {
     while (queue.length > 0) {
       const chunk = queue.shift();
       if (!chunk) break;
+      // 限速间隔：免费档 flash 高频持续调用会触发 1302
+      await new Promise((r) => setTimeout(r, 1500));
       let ext: Extraction | null = null;
       try {
         ext = await extractChunk(paper, chunk);
-      } catch {
+      } catch (err) {
         failures++;
+        const msg = err instanceof Error ? err.message : String(err);
+        const cause = err instanceof Error && err.cause ? String(err.cause) : "";
+        console.warn(`[graph] chunk失败: ${msg.slice(0, 150)} | cause: ${cause.slice(0, 150)}`);
         continue;
       }
       if (!ext) continue;
@@ -172,7 +241,7 @@ export async function extractPaperGraph(
     }
   };
 
-  await Promise.all(Array.from({ length: Math.min(concurrency, chunks.length) }, worker));
+  await Promise.all(Array.from({ length: Math.min(concurrency, usable.length) }, worker));
   if (failures > 0) console.warn(`[graph] ${paper.title}: ${failures}/${chunks.length} chunk 抽取失败（已跳过）`);
   return { entities, relations };
 }
@@ -245,6 +314,7 @@ export async function summarizeCommunities(
 async function generateTextSafe(prompt: string): Promise<{ text: string }> {
   const { generateText } = await import("ai");
   const { text } = await generateText({
+    providerOptions: NO_THINKING,
     model: fastModel(),
     prompt,
     maxTokens: 300,

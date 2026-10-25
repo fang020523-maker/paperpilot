@@ -30,9 +30,17 @@ export async function POST(req: Request) {
       pipeline: body.pipeline ?? "agentic",
     });
   } catch (err) {
-    return Response.json(
-      { error: err instanceof Error ? err.message : "评估失败" },
-      { status: 500 }
-    );
+    // LLM 暂时不可用（限流/风控）→ 返回中性默认分，保证 UI 评估流程不中断
+    const msg = err instanceof Error ? err.message : "评估失败";
+    return Response.json({
+      faithfulness: 0.5,
+      answerRelevancy: 0.5,
+      contextPrecision: 0.5,
+      contextRecall: 0.5,
+      rationale: `评估降级（模型暂不可用）：${msg.slice(0, 80)}`,
+      latencyMs: body.latencyMs ?? null,
+      pipeline: body.pipeline ?? "agentic",
+      degraded: true,
+    });
   }
 }

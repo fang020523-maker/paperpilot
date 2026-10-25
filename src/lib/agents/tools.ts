@@ -7,7 +7,7 @@
 import { tool } from "ai";
 import { generateObject } from "ai";
 import { z } from "zod";
-import { fastModel } from "../llm";
+import { fastModel, NO_THINKING } from "../llm";
 import { getKB } from "../kb/store";
 import { expandQuery, retrieveHybrid, rerankCandidates, orderForContext } from "../retrieval/hybrid";
 import { graphLocalSearch, graphGlobalSearch, serializeGraphContext } from "../retrieval/graph-search";
@@ -38,19 +38,18 @@ export function buildAgentTools(ctx: RequestContext) {
       parameters: z.object({ question: z.string().describe("用户的问题") }),
       execute: async ({ question }) => {
         const ClassifySchema = z.object({
-          complexity: z.enum(["chitchat", "simple", "factual", "multi-hop", "global-summary"]),
-          reason: z.string().max(200),
-          strategy: z.enum([
-            "direct-answer",
-            "single-retrieval",
-            "iterative-retrieval",
-            "graph-local",
-            "graph-global",
-          ]),
+          complexity: z.string().nullable().optional(),
+          reason: z.string().nullable().optional(),
+          strategy: z.string().nullable().optional(),
         });
+        const COMPLEXITIES = new Set(["chitchat", "simple", "factual", "multi-hop", "global-summary"]);
+        const STRATEGIES = new Set([
+          "direct-answer", "single-retrieval", "iterative-retrieval", "graph-local", "graph-global",
+        ]);
         try {
           const { object } = await generateObject({
-            model: fastModel(),
+            providerOptions: NO_THINKING,
+      model: fastModel(),
             schema: ClassifySchema,
             prompt: `对学术问答系统中的用户问题分类：
 - chitchat: 寒暄、问系统功能本身
@@ -62,7 +61,11 @@ export function buildAgentTools(ctx: RequestContext) {
 问题: ${question}
 输出 classification JSON。`,
           });
-          return object;
+          return {
+            complexity: COMPLEXITIES.has(object.complexity ?? "") ? object.complexity : "factual",
+            reason: (object.reason ?? "").slice(0, 200),
+            strategy: STRATEGIES.has(object.strategy ?? "") ? object.strategy : "single-retrieval",
+          };
         } catch {
           return { complexity: "factual", reason: "分类降级：默认单轮检索", strategy: "single-retrieval" };
         }
@@ -123,20 +126,26 @@ export function buildAgentTools(ctx: RequestContext) {
       execute: async ({ query, chunkIds }) => {
         const kb = getKB();
         const grades: { chunkId: string; paperTitle: string; score: number; reason: string }[] = [];
-        for (let i = 0; i < chunkIds.length; i += 2) {
-          const batch = chunkIds.slice(i, i + 2);
+        // flash 并发额度=1 → 逐条串行评分
+        for (const cid of chunkIds) {
           const results = await Promise.all(
-            batch.map(async (cid) => {
+            [cid].map(async (cid) => {
               const chunk = kb.chunks.get(cid);
               if (!chunk) return null;
               const paper = kb.papers.get(chunk.paperId);
               try {
                 const { object } = await generateObject({
+                  providerOptions: NO_THINKING,
                   model: fastModel(),
-                  schema: z.object({ score: z.number().min(0).max(10), reason: z.string().max(150) }),
+                  schema: z.object({ score: z.number().nullable().optional(), reason: z.string().nullable().optional() }),
                   prompt: `问题: ${query}\n候选片段（${paper?.title} 第${chunk.page}页）:\n${chunk.text.slice(0, 600)}\n\n该片段对回答问题的相关性 0-10（10=直接包含答案，5=背景相关，0=无关）。输出 score 与一句话 reason（中文）。`,
                 });
-                return { chunkId: cid, paperTitle: paper?.title ?? "", score: object.score, reason: object.reason };
+                return {
+                  chunkId: cid,
+                  paperTitle: paper?.title ?? "",
+                  score: Math.max(0, Math.min(10, Math.round((object.score ?? 5) * 10) / 10)),
+                  reason: (object.reason ?? "").slice(0, 150),
+                };
               } catch {
                 return { chunkId: cid, paperTitle: paper?.title ?? "", score: 5, reason: "评分降级：默认中等相关" };
               }
@@ -206,15 +215,17 @@ export function buildAgentTools(ctx: RequestContext) {
         const evidence = used.map((u) => u.chunk.text.slice(0, 500)).join("\n---\n").slice(0, 3200);
         try {
           const { object } = await generateObject({
-            model: fastModel(),
-            schema: z.object({ supportScore: z.number().min(0).max(10), verdict: z.string().max(200) }),
+            providerOptions: NO_THINKING,
+      model: fastModel(),
+            schema: z.object({ supportScore: z.number().nullable().optional(), verdict: z.string().nullable().optional() }),
             prompt: `论断列表:\n${claims.map((cl, i) => `${i + 1}. ${cl}`).join("\n")}\n\n检索证据:\n${evidence}\n\n每条论断是否能被证据直接支撑？给总支撑度 0-10，并用一句话中文说明哪些论断缺证据。`,
           });
+          const supportScore = Math.max(0, Math.min(10, Math.round((object.supportScore ?? 6) * 10) / 10));
           return {
-            supportScore: object.supportScore,
-            isGrounded: object.supportScore >= 7,
-            needsMoreRetrieval: object.supportScore < 6,
-            verdict: object.verdict,
+            supportScore,
+            isGrounded: supportScore >= 7,
+            needsMoreRetrieval: supportScore < 6,
+            verdict: (object.verdict ?? "").slice(0, 200),
           };
         } catch {
           return { supportScore: 6, isGrounded: true, needsMoreRetrieval: false, verdict: "自评降级：默认中等支撑，请谨慎措辞。" };

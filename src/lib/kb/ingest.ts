@@ -12,7 +12,7 @@ import { z } from "zod";
 import type { Chunk, Community, GraphEntity, GraphRelation, Paper } from "../types";
 import type { IngestEvent } from "../types";
 import { getEmbeddingChannel } from "../embeddings";
-import { fastModel } from "../llm";
+import { fastModel, NO_THINKING } from "../llm";
 import { chunkPages, estimateTokens, heuristicMetadata, type RawPage } from "./chunker";
 import { extractPaperGraph, summarizeCommunities } from "./graph-extract";
 import { assignCommunities, buildCooccurrenceGraph } from "./cooccurrence";
@@ -23,17 +23,18 @@ type Progress = (e: IngestEvent) => void;
 // ---------- 元数据精修 ----------
 
 const MetaSchema = z.object({
-  title: z.string().max(300),
-  authors: z.array(z.string().max(80)).max(20),
-  year: z.number().int().min(1900).max(2035).nullable(),
-  venue: z.string().max(120).nullable(),
-  abstract: z.string().max(1200).nullable(),
+  title: z.string().nullable().optional(),
+  authors: z.array(z.string().nullable()).optional(),
+  year: z.number().nullable().optional(),
+  venue: z.string().nullable().optional(),
+  abstract: z.string().nullable().optional(),
 });
 
 async function refineMetadata(pages: RawPage[], filename: string) {
   const heuristic = heuristicMetadata(pages);
   try {
     const { object } = await generateObject({
+      providerOptions: NO_THINKING,
       model: fastModel(),
       schema: MetaSchema,
       prompt: `从这篇论文的首两页文本中抽取书目元数据。若无把握给 null，不要编造。文件名: ${filename}
@@ -43,12 +44,17 @@ async function refineMetadata(pages: RawPage[], filename: string) {
 ${pages.slice(0, 2).map((p) => p.text).join("\n").slice(0, 6000)}
 """`,
     });
+    const year = object.year != null ? Math.round(object.year) : undefined;
+    const authors = (object.authors ?? [])
+      .map((a) => (a ?? "").trim().slice(0, 80))
+      .filter(Boolean)
+      .slice(0, 20);
     return {
-      title: object.title?.trim() || heuristic.title,
-      authors: object.authors?.length ? object.authors : heuristic.authors,
-      year: object.year ?? heuristic.year,
-      venue: object.venue ?? undefined,
-      abstract: object.abstract ?? heuristic.abstract,
+      title: object.title?.trim().slice(0, 300) || heuristic.title,
+      authors: authors.length > 0 ? authors : heuristic.authors,
+      year: year != null && year >= 1900 && year <= 2035 ? year : heuristic.year,
+      venue: object.venue?.trim().slice(0, 120) || undefined,
+      abstract: object.abstract?.trim().slice(0, 1200) || heuristic.abstract,
       arxivId: heuristic.arxivId,
     };
   } catch {
@@ -59,7 +65,7 @@ ${pages.slice(0, 2).map((p) => p.text).join("\n").slice(0, 6000)}
 // ---------- Contextual Chunking（Anthropic Contextual Retrieval）----------
 
 const ContextSchema = z.object({
-  contexts: z.array(z.string().min(5).max(300)).min(1),
+  contexts: z.array(z.string().nullable()).optional().default([]),
 });
 
 async function contextualizeChunks(
@@ -72,6 +78,7 @@ async function contextualizeChunks(
     const batch = chunks.slice(i, i + BATCH);
     try {
       const { object } = await generateObject({
+        providerOptions: NO_THINKING,
         model: fastModel(),
         schema: ContextSchema,
         prompt: `为论文《${paper.title}》的 ${batch.length} 个文本片段各生成一句简短的上下文定位说明（中文）。
@@ -82,8 +89,8 @@ async function contextualizeChunks(
 ${batch.map((c, j) => `[${j + 1}] (${c.section ?? "第" + c.page + "页"}) ${c.rawText.slice(0, 400)}...`).join("\n\n")}`,
       });
       batch.forEach((c, j) => {
-        const ctx = object.contexts[j];
-        if (ctx) {
+        const ctx = (object.contexts[j] ?? "").trim().slice(0, 300);
+        if (ctx.length >= 5) {
           c.contextPrefix = ctx.trim();
           c.text = `${ctx.trim()}\n${c.rawText}`;
         }
@@ -180,7 +187,11 @@ export async function ingestPaper(input: IngestInput, onProgress: Progress): Pro
 
   // 图谱抽取
   onProgress({ type: "progress", stage: "graph-extraction", percent: 60, detail: "抽取实体与关系…" });
-  let { entities, relations } = await extractPaperGraph(paper, chunks);
+  // SKIP_EXTRACT=1：批量种子模式，跳过 LLM 抽取直接走共现图谱（避免持续高频触发账号风控）
+  let { entities, relations } =
+    process.env.SKIP_EXTRACT === "1"
+      ? { entities: new Map(), relations: new Map() }
+      : await extractPaperGraph(paper, chunks);
   if (entities.size === 0) {
     // 降级链：LLM 抽取不可用 → 术语共现图谱（真实语料构建，保证图谱页可用）
     const co = buildCooccurrenceGraph(paper.id, paper.title, chunks);

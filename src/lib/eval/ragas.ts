@@ -4,14 +4,14 @@
  */
 import { generateObject } from "ai";
 import { z } from "zod";
-import { fastModel } from "../llm";
+import { fastModel, NO_THINKING } from "../llm";
 
 const ScoreSchema = z.object({
-  faithfulness: z.number().min(0).max(1),
-  answerRelevancy: z.number().min(0).max(1),
-  contextPrecision: z.number().min(0).max(1),
-  contextRecall: z.number().min(0).max(1),
-  rationale: z.string().max(400),
+  faithfulness: z.number().nullable().optional(),
+  answerRelevancy: z.number().nullable().optional(),
+  contextPrecision: z.number().nullable().optional(),
+  contextRecall: z.number().nullable().optional(),
+  rationale: z.string().nullable().optional(),
 });
 
 export interface RagasInput {
@@ -31,6 +31,7 @@ export async function ragasEvaluate(input: RagasInput): Promise<{
   const contextText = contexts.map((c, i) => `[${i + 1}] ${c.slice(0, 700)}`).join("\n\n");
 
   const { object } = await generateObject({
+    providerOptions: NO_THINKING,
     model: fastModel(),
     schema: ScoreSchema,
     prompt: `你是 RAG 系统质量评估器（RAGAS 方法论）。依据以下定义逐项打分（0.0-1.0，可一位小数）：
@@ -50,5 +51,17 @@ ${input.answer.slice(0, 3000)}
 
 输出四项分数与一句话 rationale（中文）。`,
   });
-  return object;
+  // 模型可能给 0-100 或 0-10 刻度 → 归一到 0-1
+  const clamp = (v: number | null | undefined) => {
+    if (v == null) return 0.5;
+    if (v > 1) v = v > 10 ? v / 100 : v / 10;
+    return Math.max(0, Math.min(1, Math.round(v * 100) / 100));
+  };
+  return {
+    faithfulness: clamp(object.faithfulness),
+    answerRelevancy: clamp(object.answerRelevancy),
+    contextPrecision: clamp(object.contextPrecision),
+    contextRecall: clamp(object.contextRecall),
+    rationale: (object.rationale ?? "").slice(0, 400),
+  };
 }
