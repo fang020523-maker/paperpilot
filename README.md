@@ -118,10 +118,10 @@ src/
 
 Next.js 16 · React 19 · TypeScript · Tailwind CSS v4 · shadcn/ui · Vercel AI SDK 4 · Zustand · TanStack Query · pdf.js · d3-force · Transformers.js (ONNX Runtime WebGPU) · graphology + Louvain · recharts
 
-## 📄 文档
+## 📄 文档与交付物
 
-- [技术文档（提交版 PDF 源）](docs/technical-report.md)
-- [演示视频分镜脚本](docs/demo-video-script.md)
+- **[技术文档 PDF（提交版）](docs/PaperPilot-技术文档.pdf)** — 7 页，含封面，已通过质检与视觉验收（源文档 [technical-report.md](docs/technical-report.md)，构建脚本 [pdf-build/](docs/pdf-build/)）
+- **[演示视频（WebM，2.5 分钟 1080p）](docs/demo-video.webm)** — 无声录屏成片：问答主秀（Agentic 时间线+引用+RAGAS）→ 知识图谱 → 评估仪表盘 → 文献库；配音请对照 [demo-video-script.md](docs/demo-video-script.md) 口播词
 
 ## 🚢 部署
 

@@ -1,0 +1,11 @@
+{
+  "kicker": "全国高校 AI WEB 开发挑战赛 · 参赛技术文档",
+  "hero": "PaperPilot 文翰",
+  "summary": "基于 Agentic RAG 与 GraphRAG 的学术文献智能问答系统：五工具智能体编排、混合检索管道、知识图谱推理、RAGAS 量化评估与浏览器端侧隐私模式，全程论断可溯源、质量可量化。",
+  "meta": "赛道方向：RAG 知识问答系统　·　2026 年 10 月",
+  "footer": "PAPERPILOT · AGENTIC RAG · GRAPHRAG · RAGAS",
+  "footer_left": "PaperPilot 团队",
+  "footer_right": "2026 年 10 月",
+  "year": "2026",
+  "word": "TECH REPORT"
+}
