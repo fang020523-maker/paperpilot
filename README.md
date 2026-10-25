@@ -121,7 +121,7 @@ Next.js 16 · React 19 · TypeScript · Tailwind CSS v4 · shadcn/ui · Vercel A
 ## 📄 文档与交付物
 
 - **[技术文档 PDF（提交版）](docs/PaperPilot-技术文档.pdf)** — 7 页，含封面，已通过质检与视觉验收（源文档 [technical-report.md](docs/technical-report.md)，构建脚本 [pdf-build/](docs/pdf-build/)）
-- **[演示视频（WebM，2.5 分钟 1080p）](docs/demo-video.webm)** — 无声录屏成片：问答主秀（Agentic 时间线+引用+RAGAS）→ 知识图谱 → 评估仪表盘 → 文献库；配音请对照 [demo-video-script.md](docs/demo-video-script.md) 口播词
+- **[演示视频·配音版（MP4，2.5 分钟 1080p）](docs/demo-video-final.mp4)** — Edge 神经语音（晓晓）中文解说已混入：问答主秀（Agentic 时间线+CRAG 纠错+引用+RAGAS）→ 知识图谱 → 评估仪表盘 → 文献库收尾；解说词见 [narration-script.json](docs/narration-script.json)，无声版 [demo-video.webm](docs/demo-video.webm) 保留
 
 ## 🚢 部署
 
@@ -132,7 +132,7 @@ docker build -t paperpilot . && docker run -p 3000:3000 -v pp-data:/app/.data --
 # 或裸机：npm run build && npm start && npm run seed:demo
 ```
 
-> Vercel 等无状态平台可跑但每次冷启动知识库为空，不建议用于评审演示。
+**生产模式已实跑验证**：`npm run build && PORT=3001 npm start` —— 首页 35ms、知识库快照自动恢复（15 篇/1321 块/49 实体）、MCP 与全部页面 200、真实对话链路正常。Vercel 等无状态平台可跑但每次冷启动知识库为空，不建议用于评审演示。
 
 ## ⚠️ 声明
 
