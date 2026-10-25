@@ -65,18 +65,76 @@ const deepseek =
 export function chatModel(preference?: "zhipu" | "deepseek"): LanguageModel {
   if (preference === "deepseek" && deepseek) return deepseek.chatModel(DEEPSEEK_CHAT_MODEL);
   if (preference === "zhipu" && zhipu) return zhipu.chatModel(ZHIPU_CHAT_MODEL);
-  if (zhipu) return zhipu.chatModel(ZHIPU_CHAT_MODEL);
+  if (zhipu)
+    // 主模型 4.6 触发限流时回退 flash（账号风控有粘性，flash 单发常可用）
+    return withFallback(zhipu.chatModel(ZHIPU_CHAT_MODEL), zhipu.chatModel("glm-4-flash"));
   if (deepseek) return deepseek.chatModel(DEEPSEEK_CHAT_MODEL);
   return mockChatModel();
 }
 
 /**
- * 轻量任务模型（打分/重写/抽取）：优先免费的 glm-4-flash 降本提速，无则回退主模型。
+ * 轻量任务模型（打分/重写/抽取）：优先免费的 glm-4-flash，账号级封禁/限流时自动回退 glm-4.6。
  */
 export function fastModel(): LanguageModel {
-  if (zhipu) return zhipu.chatModel("glm-4-flash");
+  if (zhipu) {
+    // 账号可能对特定子模型返回 1314/1113（如 flash 被锁而 4.6 可用），包装自动回退
+    return withFallback(
+      zhipu.chatModel("glm-4-flash"),
+      zhipu.chatModel(ZHIPU_CHAT_MODEL)
+    );
+  }
   if (deepseek) return deepseek.chatModel(DEEPSEEK_CHAT_MODEL);
   return mockChatModel();
+}
+
+/**
+ * 模型级回退包装：主模型请求失败（套餐/余额/限流类错误）时用备模型重试。
+ * 带熔断：连续 2 次失败后 10 分钟冷却期内直接走备模型（避免每请求双倍延迟）。
+ */
+const FALLBACK_ERRORS = /1314|1113|1302|1305|429|rate|套餐|余额|速率/i;
+
+function withFallback(primary: LanguageModel, fallback: LanguageModel): LanguageModel {
+  const breaker = { fails: 0, openUntil: 0 };
+  const primaryAllowed = () => breaker.openUntil < Date.now();
+  const noteFail = () => {
+    if (++breaker.fails >= 2) {
+      breaker.openUntil = Date.now() + 10 * 60 * 1000;
+      breaker.fails = 0;
+      console.warn(`[llm] ${primary.modelId} 连续失败，熔断 10 分钟 → 直接使用 ${fallback.modelId}`);
+    }
+  };
+
+  const self = {
+    specificationVersion: "v1" as const,
+    provider: "zhipu-fallback",
+    modelId: `${primary.modelId}->${fallback.modelId}`,
+    defaultObjectGenerationMode: "json" as const,
+    async doGenerate(options: any) {
+      if (primaryAllowed()) {
+        try {
+          return await primary.doGenerate(options);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (!FALLBACK_ERRORS.test(msg)) throw err;
+          noteFail();
+        }
+      }
+      return fallback.doGenerate(options);
+    },
+    async doStream(options: any) {
+      if (primaryAllowed()) {
+        try {
+          return await primary.doStream(options);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (!FALLBACK_ERRORS.test(msg)) throw err;
+          noteFail();
+        }
+      }
+      return fallback.doStream(options);
+    },
+  };
+  return self as unknown as LanguageModel;
 }
 
 export function llmStatus(): LlmStatus {
