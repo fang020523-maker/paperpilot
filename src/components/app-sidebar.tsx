@@ -7,7 +7,6 @@ import {
   ChartNoAxesCombined,
   MessagesSquare,
   Network,
-  Settings2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -66,12 +65,11 @@ export function AppSidebar() {
       </nav>
 
       {/* 底部状态 */}
-      <div className="border-t px-5 py-4 text-[11px] text-muted-foreground space-y-1.5">
-        <div className="flex items-center gap-2">
-          <Settings2 className="size-3.5" />
-          <span>全国高校 AI Web 开发挑战赛</span>
+      <div className="border-t px-4 py-3.5 text-[10px] leading-relaxed text-muted-foreground">
+        <div className="opacity-80">全国高校 AI Web 开发挑战赛</div>
+        <div className="mt-0.5 font-mono break-all opacity-60">
+          Agentic RAG · GraphRAG · RAGAS
         </div>
-        <div className="font-mono opacity-70">Agentic RAG · GraphRAG · RAGAS</div>
       </div>
     </aside>
   );

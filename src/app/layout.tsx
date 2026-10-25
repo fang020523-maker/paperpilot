@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -8,16 +7,6 @@ import { MobileNav } from "@/components/mobile-nav";
 function MobileNavWrapper() {
   return <MobileNav />;
 }
-
-const geistSans = Geist({
-  variable: "--font-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: {
@@ -30,10 +19,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html
-      lang="zh-CN"
-      className={`${geistSans.variable} ${geistMono.variable} dark h-full antialiased`}
-    >
+    <html lang="zh-CN" className="dark h-full antialiased">
       <body className="min-h-full flex flex-col">
         <Providers>
           <div className="flex flex-1 min-h-0">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   CartesianGrid,
   Legend,
@@ -16,10 +16,12 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { FlaskConical, Gauge, ListChecks, Timer } from "lucide-react";
+import { FlaskConical, Gauge, ListChecks, Loader2, Play, Timer } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 import { useEvalStore } from "@/stores/eval-history";
+import type { EvaluationRecord } from "@/lib/types";
 
 const METRICS = [
   { key: "faithfulness", label: "忠实度" },
@@ -38,6 +40,75 @@ function avg(records: { scores: { [K in MetricKey]: number } }[], key: MetricKey
 export default function AnalyticsPage() {
   const records = useEvalStore((s) => s.records);
   const clear = useEvalStore((s) => s.clear);
+  const addRecord = useEvalStore((s) => s.addRecord);
+  const [benchRunning, setBenchRunning] = useState(false);
+  const [benchProgress, setBenchProgress] = useState<{ question: string; pipeline: string; stage: string; index: number; total: number } | null>(null);
+
+  /** 一键对比实验：6 道预设题 × 双管线 × 自动 RAGAS（服务端编排，SSE 进度） */
+  const runBenchmark = async () => {
+    if (benchRunning) return;
+    setBenchRunning(true);
+    setBenchProgress(null);
+    try {
+      const res = await fetch("/api/benchmark", { method: "POST" });
+      if (!res.ok || !res.body) {
+        const err = await res.json().catch(() => ({ error: "HTTP " + res.status }));
+        throw new Error(err.error ?? "启动失败");
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n\n");
+        buf = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          let evt: Record<string, unknown>;
+          try {
+            evt = JSON.parse(line.slice(6));
+          } catch {
+            continue;
+          }
+          if (evt.type === "progress") {
+            setBenchProgress({
+              question: String(evt.question),
+              pipeline: String(evt.pipeline),
+              stage: String(evt.stage),
+              index: Number(evt.index),
+              total: Number(evt.total),
+            });
+          } else if (evt.type === "result") {
+            const scores = evt.scores as Record<string, number>;
+            addRecord({
+              id: crypto.randomUUID(),
+              question: String(evt.question),
+              answerPreview: String(evt.answerPreview),
+              scores: {
+                faithfulness: scores.faithfulness ?? 0,
+                answerRelevancy: scores.answerRelevancy ?? 0,
+                contextPrecision: scores.contextPrecision ?? 0,
+                contextRecall: scores.contextRecall ?? 0,
+                latencyMs: Number(evt.latencyMs ?? 0),
+                methods: ["benchmark", String(evt.pipeline)],
+              },
+              pipeline: evt.pipeline === "naive" ? "naive" : "agentic",
+              createdAt: new Date().toISOString(),
+            } satisfies EvaluationRecord);
+          } else if (evt.type === "error") {
+            throw new Error(String(evt.message));
+          }
+        }
+      }
+    } catch (err) {
+      toast.error(`对比实验失败：${err instanceof Error ? err.message : "未知错误"}`);
+    } finally {
+      setBenchRunning(false);
+      setBenchProgress(null);
+    }
+  };
 
   const agentic = records.filter((r) => r.pipeline === "agentic");
   const naive = records.filter((r) => r.pipeline === "naive");
@@ -78,20 +149,50 @@ export default function AnalyticsPage() {
               每次问答自动进行 RAGAS 四指标 LLM-as-a-judge 评估（arXiv:2309.15217）
             </p>
           </div>
-          {records.length > 0 && (
-            <Button variant="outline" size="sm" onClick={clear}>
-              清空评估历史
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => void runBenchmark()}
+              disabled={benchRunning}
+              className="gap-2"
+              title="6 道预设题 × [朴素基线 vs Agentic] 双管线自动运行并评分，一键生成雷达对比数据"
+            >
+              {benchRunning ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" /> 实验运行中…
+                </>
+              ) : (
+                <>
+                  <Play className="size-4" /> 一键对比实验
+                </>
+              )}
             </Button>
-          )}
+            {records.length > 0 && !benchRunning && (
+              <Button variant="outline" size="sm" onClick={clear}>
+                清空历史
+              </Button>
+            )}
+          </div>
         </div>
+
+        {benchProgress && (
+          <div className="mt-4 flex items-center gap-3 rounded-xl border border-primary/25 bg-primary/5 px-4 py-2.5 text-sm">
+            <Loader2 className="size-4 animate-spin text-primary" />
+            <span className="text-muted-foreground">
+              第 {benchProgress.index + 1}/{benchProgress.total} 题 ·{" "}
+              {benchProgress.pipeline === "naive" ? "朴素基线" : "Agentic"} 管线 ·{" "}
+              {benchProgress.stage === "answering" ? "生成回答中" : "RAGAS 评分中"}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-xs opacity-70">{benchProgress.question}</span>
+          </div>
+        )}
 
         {records.length === 0 ? (
           <div className="mt-16 flex flex-col items-center justify-center rounded-2xl border border-dashed p-16 text-center">
             <Gauge className="size-10 text-muted-foreground/40" />
             <div className="mt-3 text-sm font-medium">暂无评估数据</div>
-            <div className="mt-1 max-w-sm text-xs text-muted-foreground">
-              去智能问答页提问，系统会在每次回答完成后自动评分；
-              用顶部的「Agentic / 基线」切换对比两种管线的质量差异
+            <div className="mt-1 max-w-md text-xs text-muted-foreground">
+              点击右上方「一键对比实验」，自动运行 6 道预设问题 × 双管线并评分；
+              或去智能问答页提问（每次回答后自动评估），用顶部 Agentic/基线 切换手动对比
             </div>
           </div>
         ) : (

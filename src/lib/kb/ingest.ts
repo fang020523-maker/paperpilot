@@ -15,6 +15,7 @@ import { getEmbeddingChannel } from "../embeddings";
 import { fastModel } from "../llm";
 import { chunkPages, estimateTokens, heuristicMetadata, type RawPage } from "./chunker";
 import { extractPaperGraph, summarizeCommunities } from "./graph-extract";
+import { assignCommunities, buildCooccurrenceGraph } from "./cooccurrence";
 import { getKB } from "./store";
 
 type Progress = (e: IngestEvent) => void;
@@ -179,7 +180,13 @@ export async function ingestPaper(input: IngestInput, onProgress: Progress): Pro
 
   // 图谱抽取
   onProgress({ type: "progress", stage: "graph-extraction", percent: 60, detail: "抽取实体与关系…" });
-  const { entities, relations } = await extractPaperGraph(paper, chunks);
+  let { entities, relations } = await extractPaperGraph(paper, chunks);
+  if (entities.size === 0) {
+    // 降级链：LLM 抽取不可用 → 术语共现图谱（真实语料构建，保证图谱页可用）
+    const co = buildCooccurrenceGraph(paper.id, paper.title, chunks);
+    entities = co.entities;
+    relations = co.relations;
+  }
   onProgress({
     type: "graph-done",
     entities: entities.size,
@@ -213,6 +220,10 @@ export async function ingestPaper(input: IngestInput, onProgress: Progress): Pro
     kb.communities = communities;
   } catch (err) {
     console.error("[ingest] 社区摘要失败:", err);
+  }
+  // LLM 社区摘要不可用/为空 → 共现模式 Louvain 直接分簇
+  if (kb.communities.length === 0 && kb.entities.size > 0) {
+    kb.communities = assignCommunities(kb.entities, kb.relations);
   }
 
   paper.status = "ready";

@@ -125,13 +125,28 @@ export async function POST(req: Request) {
     case "initialize":
       return ok({
         protocolVersion: "2025-03-26",
-        capabilities: { tools: { listChanged: false } },
+        capabilities: {
+          tools: { listChanged: false },
+          resources: { listChanged: false },
+        },
         serverInfo: { name: "paperpilot", version: "1.0.0", title: "PaperPilot 学术文献检索 MCP" },
       });
     case "ping":
       return ok({});
     case "tools/list":
       return ok({ tools: TOOLS });
+    case "resources/list": {
+      const kb = getKB();
+      await kb.ensureLoaded();
+      return ok({
+        resources: [...kb.papers.values()].slice(0, 100).map((p) => ({
+          uri: `paperpilot://papers/${p.id}`,
+          name: p.title.slice(0, 80),
+          mimeType: "text/plain",
+          description: `${p.year ?? ""} ${p.filename} · ${p.chunkCount} 分块`.trim(),
+        })),
+      });
+    }
     case "tools/call": {
       const name = String((rpc.params as { name?: string })?.name ?? "");
       const args = ((rpc.params as { arguments?: Record<string, unknown> })?.arguments ?? {}) as Record<string, unknown>;

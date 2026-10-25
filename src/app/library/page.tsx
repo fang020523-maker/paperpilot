@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import {
   AlertTriangle,
@@ -49,6 +49,7 @@ export default function LibraryPage() {
   const [detailId, setDetailId] = useState<string | null>(null);
   const [visionOn, setVisionOn] = useState(true);
   const fileInput = useRef<HTMLInputElement>(null);
+  const queryClient = useQueryClient();
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["papers"],
@@ -73,6 +74,9 @@ export default function LibraryPage() {
     if (res.ok) {
       toast.success(`已删除《${title}》及其全部索引`);
       void refetch();
+      // 图谱与知识库相关查询一并失效
+      void queryClient.invalidateQueries({ queryKey: ["graph"] });
+      void queryClient.invalidateQueries({ queryKey: ["papers"] });
     } else {
       toast.error("删除失败");
     }

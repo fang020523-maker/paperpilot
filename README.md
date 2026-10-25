@@ -5,6 +5,14 @@
 
 上传论文 PDF，系统自动完成结构化解析、上下文增强分块、向量索引与知识图谱构建。提问时，Agentic RAG 流水线**自主决策**检索策略——按问题复杂度路由、对证据打分纠错、回答前自反思验证——每个论断带 [n] 引用可溯源到页码，每次回答自动进行 RAGAS 四指标量化评估，全程可在「AI 思考时间线」中实时观看。
 
+| 智能问答（时间线 + 引用 + RAGAS） | 知识图谱（社区聚类） |
+|---|---|
+| ![智能问答](docs/screenshots/chat.png) | ![知识图谱](docs/screenshots/graph.png) |
+
+| 文献库（导入管线） | 质量评估（A/B 雷达对比） |
+|---|---|
+| ![文献库](docs/screenshots/library.png) | ![质量评估](docs/screenshots/analytics.png) |
+
 ## ✨ 核心特性
 
 | 能力 | 实现 | 支撑论文 |
@@ -72,10 +80,11 @@ npm run seed:demo        # 一键导入知识库（或直接在文献库页拖�
 
 ### 3. 体验路线
 
-1. **智能问答**：试试「哪些论文用了相同的数据集？」（多跳·图谱）、「Self-RAG 和 CRAG 的纠错策略有何不同？」（跨论文对比）、「这个领域的主要技术路线？」（图谱全局）
-2. **顶部切换 Agentic / 基线 / 隐私** 三档管线，对比回答质量与「质量评估」页的雷达图
-3. **知识图谱**：Louvain 社区着色、实体邻域高亮、点击查看 1 跳关系与证据
-4. **MCP**：`curl -X POST localhost:3000/api/mcp -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' -H "Content-Type: application/json"`
+1. **智能问答**：试试「哪些论文用了相同的数据集？」（多跳·图谱）、「Self-RAG 和 CRAG 的纠错策略有何不同？」（跨论文对比）、「这个领域的主要技术路线？」（图谱全局）；引用徽标**可点击**查看原文证据片段
+2. **质量评估页 →「一键对比实验」**：自动跑 6 道预设题 × [朴素基线 vs Agentic] 双管线并评分，雷达图即刻呈现量化对比
+3. **顶部切换 Agentic / 基线 / 隐私** 三档管线，隐私模式下检索全程在浏览器（WebGPU）完成，仅命中片段上云
+4. **知识图谱**：Louvain 社区着色、实体邻域高亮、点击查看 1 跳关系与证据
+5. **MCP**：`curl -X POST localhost:3000/api/mcp -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' -H "Content-Type: application/json"`
 
 ## 📁 目录结构
 
