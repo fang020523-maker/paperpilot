@@ -17,6 +17,7 @@ from reportlab.platypus import (
     BaseDocTemplate, PageTemplate, Frame, Paragraph, Spacer, Table, TableStyle,
     KeepTogether, CondPageBreak, Preformatted,
 )
+from reportlab.graphics.shapes import Drawing, Rect, String, Line
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfbase.pdfmetrics import registerFontFamily
@@ -118,9 +119,69 @@ def make_table(rows):
     tbl.setStyle(TableStyle(style))
     return tbl
 
+TEAM_INFO = [
+    ("参赛学校", "＿＿＿＿＿＿＿＿＿＿＿＿"),
+    ("队伍名称", "＿＿＿＿＿＿＿＿＿＿＿＿"),
+    ("队伍编号", "＿＿＿＿＿＿＿＿＿＿＿＿"),
+    ("团队成员", "＿＿＿、＿＿＿、＿＿＿"),
+    ("指导教师", "＿＿＿＿＿＿＿＿＿＿＿＿"),
+    ("参赛赛道", "方向二 · RAG 知识问答系统"),
+    ("作品名称", "PaperPilot 文翰 — 基于 Agentic RAG 与 GraphRAG 的学术文献智能问答系统"),
+    ("提交日期", "2026 年 11 月"),
+]
+
+def team_info_flowables():
+    fl = []
+    fl.append(Paragraph("参赛信息", S["h1"]))
+    fl.append(Spacer(1, 6))
+    data = [[Paragraph("<b>%s</b>" % k, S["cell"]), Paragraph(v, S["cell"])] for k, v in TEAM_INFO]
+    tbl = Table(data, colWidths=[0.22 * AVAIL_W, 0.78 * AVAIL_W], hAlign="CENTER")
+    tbl.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 9),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 9),
+        ("LEFTPADDING", (0, 0), (-1, -1), 10),
+        ("LINEBELOW", (0, 0), (-1, -2), 0.4, BG_SURFACE),
+        ("BACKGROUND", (0, 0), (0, -1), BG_PAGE),
+    ]))
+    fl.append(tbl)
+    fl.append(Spacer(1, 12))
+    fl.append(Paragraph("系统架构总览", S["h2"]))
+    fl.append(Spacer(1, 2))
+    fl.append(architecture_diagram())
+    fl.append(Paragraph("图 1 · PaperPilot 四层架构与数据流（详细设计见第 2 章）", S["caption"]))
+    return fl
+
+def architecture_diagram():
+    W = AVAIL_W
+    layer_h, gap = 50, 24
+    H = 4 * layer_h + 3 * gap + 16
+    d = Drawing(W, H)
+    layers = [
+        ("前端层", "Next.js 16 · 流式对话 · 检索时间线 · 知识图谱画布 · RAGAS 仪表盘", "#eaf3f7"),
+        ("智能体层", "classify_query → hybrid_retrieve ⇄ grade_documents → graph_search → self_assess", "#e2eef5"),
+        ("检索层", "查询扩展(HyDE/多视角) · BM25+向量 RRF 融合 · LLM 重排 · Louvain 图谱 Local/Global", "#dae9f2"),
+        ("接入层", "智谱 GLM 多密钥轮换 · DeepSeek · GLM-4V · 本地 ONNX e5 嵌入", "#d2e4ef"),
+    ]
+    y = H - layer_h - 8
+    for name, desc, bg in layers:
+        d.add(Rect(0, y, W, layer_h, rx=6, ry=6, fillColor=colors.HexColor(bg),
+                   strokeColor=ACCENT, strokeWidth=0.8))
+        d.add(String(10, y + layer_h - 21, name, fontName="MSYHBD", fontSize=11,
+                     fillColor=TEXT_PRIMARY))
+        d.add(String(84, y + layer_h - 20, desc, fontName="MSYH", fontSize=8,
+                     fillColor=TEXT_MUTED))
+        if y > 20:
+            d.add(Line(W / 2 - 40, y - 2, W / 2 - 40, y - gap + 12,
+                       strokeColor=ACCENT, strokeWidth=1))
+            d.add(String(W / 2 - 34, y - gap / 2 - 4, "请求 / 数据流", fontName="MSYH",
+                         fontSize=7, fillColor=TEXT_MUTED))
+        y -= layer_h + gap
+    return d
+
 def build(md_path: str, out_pdf: str):
     lines = open(md_path, encoding="utf-8").read().split("\n")
-    story = []
+    story = team_info_flowables()
     i = 0
     first_h1 = True
     while i < len(lines):

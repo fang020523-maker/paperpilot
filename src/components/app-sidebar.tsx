@@ -2,11 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useTheme } from "next-themes";
 import {
   BookOpenText,
   ChartNoAxesCombined,
   MessagesSquare,
+  Moon,
   Network,
+  Sun,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -66,11 +70,31 @@ export function AppSidebar() {
 
       {/* 底部状态 */}
       <div className="border-t px-4 py-3.5 text-[10px] leading-relaxed text-muted-foreground">
-        <div className="opacity-80">全国高校 AI Web 开发挑战赛</div>
+        <div className="flex items-center justify-between">
+          <span className="opacity-80">全国高校 AI Web 开发挑战赛</span>
+          <ThemeToggle />
+        </div>
         <div className="mt-0.5 font-mono break-all opacity-60">
           Agentic RAG · GraphRAG · RAGAS
         </div>
       </div>
     </aside>
+  );
+}
+
+function ThemeToggle() {
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  return (
+    <button
+      type="button"
+      aria-label="切换明暗主题"
+      title="切换明暗主题"
+      onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+      className="flex size-6 items-center justify-center rounded-md border border-transparent text-muted-foreground transition-colors hover:border-border hover:text-foreground"
+    >
+      {mounted && theme === "dark" ? <Sun className="size-3.5" /> : <Moon className="size-3.5" />}
+    </button>
   );
 }

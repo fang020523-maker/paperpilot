@@ -47,7 +47,7 @@ export default function LibraryPage() {
   const [dragOver, setDragOver] = useState(false);
   const [keyword, setKeyword] = useState("");
   const [detailId, setDetailId] = useState<string | null>(null);
-  const [visionOn, setVisionOn] = useState(true);
+  const [visionOn, setVisionOn] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
 
@@ -168,7 +168,7 @@ export default function LibraryPage() {
             onClick={(e) => e.stopPropagation()}
           >
             <Switch checked={visionOn} onCheckedChange={setVisionOn} />
-            GLM-4V 图表理解（导入时解读图表页，需智谱密钥，较慢）
+            GLM-4V 图表理解（需密钥可用，导入较慢；不可用时自动跳过）
           </label>
         </div>
 

@@ -23,11 +23,11 @@ const ALLOWED_FILES = new Set([
   "onnx/model_quantized.onnx",
 ]);
 
-export async function GET(_req: Request, ctx: { params: Promise<{ path: string[] }> }) {
+export async function GET(req: Request, ctx: { params: Promise<{ path: string[] }> }) {
   const { path: parts } = await ctx.params;
-  const rel = parts.join("/");
   const root = parts[0];
-  if (!ALLOWED_ROOTS.includes(root) || !ALLOWED_FILES.has(rel)) {
+  const relUnderRoot = parts.slice(1).join("/");
+  if (!ALLOWED_ROOTS.includes(root) || !ALLOWED_FILES.has(relUnderRoot)) {
     return Response.json({ error: "forbidden" }, { status: 403 });
   }
   const abs = path.join(process.cwd(), "models", ...parts);
@@ -42,6 +42,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ path: string[]
       "Content-Type": MIME[ext] ?? "application/octet-stream",
       "Content-Length": String(stat.size),
       "Cache-Control": "public, max-age=86400",
+      "Accept-Ranges": "bytes",
     },
   });
 }

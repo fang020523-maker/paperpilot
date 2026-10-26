@@ -10,7 +10,8 @@
     "postinstall": "node scripts/copy-pdf-worker.mjs",
     "fetch:models": "node scripts/fetch-models.mjs",
     "fetch:demo": "node scripts/fetch-demo-papers.mjs",
-    "seed:demo": "node scripts/seed-demo.mjs"
+    "seed:demo": "node scripts/seed-demo.mjs",
+    "test": "vitest run"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^0.2.16",
@@ -50,6 +51,11 @@
     "eslint": "^9",
     "eslint-config-next": "16.4.3",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
+  },
+  "optionalDependencies": {
+    "graphology-types": "^0.24.8"
   }
 }

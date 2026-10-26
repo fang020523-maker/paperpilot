@@ -46,12 +46,16 @@ export function heuristicMetadata(pages: RawPage[]) {
     if (l.length > title.length && l.length < 200 && !/^\d+$/.test(l)) title = l;
     if (title.length > 25) break;
   }
-  // 作者行：逗号分隔的 Word 名字
+  // 作者行：逗号/and 分隔的 Word 名字
   const authorLine = lines.find(
-    (l) => /^[A-Z][a-z]+( [A-Z]\.?)?( [A-Z][a-z]+)+(, ?[A-Z][a-z]+( [A-Z]\.?)?( [A-Z][a-z]+)*)+$/.test(l) && l.split(",").length >= 2
+    (l) => /^[A-Z][a-z]+(( [A-Z]\.?)?( [A-Z][a-z]+)){0,2}(, ?[A-Z][a-z]+(( [A-Z]\.?)?( [A-Z][a-z]+)){0,2})+$/.test(l.replace(/ (and|&) /g, ", ")) && l.split(/,| and | & /).length >= 2
   );
   const authors = authorLine
-    ? authorLine.split(",").map((a) => a.trim()).filter((a) => a.length > 2 && a.length < 40)
+    ? authorLine
+        .replace(/ (and|&) /g, ", ")
+        .split(",")
+        .map((a) => a.trim())
+        .filter((a) => a.length > 2 && a.length < 40)
     : [];
   // 年份：19xx/20xx
   const yearMatch = first.match(/\b(19|20)\d{2}\b/);
