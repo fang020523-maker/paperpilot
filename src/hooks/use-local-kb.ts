@@ -45,10 +45,12 @@ export function useLocalKb() {
         chunks: { id: string; paperId: string; paperTitle: string; page: number; section?: string; text: string }[];
         total: number;
       };
+      // 集合比对（IndexedDB getAll 按主键序返回，与服务器插入序不同，不能用有序数组比对）
+      const localIds = new Set(all.map((c) => c.id));
       const needSync =
         syncedVersion !== SYNC_VERSION ||
         all.length !== serverChunks.length ||
-        serverChunks.some((sc, i) => all[i]?.id !== sc.id);
+        serverChunks.some((sc) => !localIds.has(sc.id));
 
       const { device: dev } = await getBrowserEmbedder();
       setDevice(dev);

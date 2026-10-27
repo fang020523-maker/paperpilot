@@ -121,7 +121,7 @@ Next.js 16 · React 19 · TypeScript · Tailwind CSS v4 · shadcn/ui · Vercel A
 ## 📄 文档与交付物
 
 - **[技术文档 PDF（提交版）](docs/PaperPilot-技术文档.pdf)** — 7 页，含封面，已通过质检与视觉验收（源文档 [technical-report.md](docs/technical-report.md)，构建脚本 [pdf-build/](docs/pdf-build/)）
-- **[演示视频·配音版（MP4，2.5 分钟 1080p）](docs/demo-video-final.mp4)** — Edge 神经语音（晓晓）中文解说已混入：问答主秀（Agentic 时间线+CRAG 纠错+引用+RAGAS）→ 知识图谱 → 评估仪表盘 → 文献库收尾；解说词见 [narration-script.json](docs/narration-script.json)，无声版 [demo-video.webm](docs/demo-video.webm) 保留
+- **[演示视频 v2（MP4，5.1 分钟 1080p，中文配音）](docs/demo-video-v2.mp4)** — 九段完整演示：项目引入 → Agentic 问答主秀（时间线/CRAG 纠错/引用/RAGAS）→ 跨论文对比 → 引用溯源弹窗 → 端侧隐私模式（WebGPU 同步+拒答机制）→ 知识图谱 → A/B 评估仪表盘 → 文献库 → 主题切换收尾；解说词 [narration-v2.json](docs/narration-v2.json)，生成/混流脚本可复现（gen-narration-v2.py / mux-v2.py）
 
 ## 🚢 部署
 
