@@ -3,7 +3,7 @@
 PaperPilot 技术文档正文构建（ReportLab）
 源：docs/technical-report.md（轻量 md 解析：标题/段落/表格/列表/代码块/行内标记）
 """
-import os, re, sys
+import os, re, sys, json
 
 PDF_SKILL_DIR = r"C:\Users\lenovo\.zcode\cli\plugins\cache\zcode-plugins-official\pdf\0.2.1\skills\pdf"
 sys.path.insert(0, os.path.join(PDF_SKILL_DIR, "scripts"))
@@ -119,16 +119,10 @@ def make_table(rows):
     tbl.setStyle(TableStyle(style))
     return tbl
 
-TEAM_INFO = [
-    ("参赛学校", "＿＿＿＿＿＿＿＿＿＿＿＿"),
-    ("队伍名称", "＿＿＿＿＿＿＿＿＿＿＿＿"),
-    ("队伍编号", "＿＿＿＿＿＿＿＿＿＿＿＿"),
-    ("团队成员", "＿＿＿、＿＿＿、＿＿＿"),
-    ("指导教师", "＿＿＿＿＿＿＿＿＿＿＿＿"),
-    ("参赛赛道", "方向二 · RAG 知识问答系统"),
-    ("作品名称", "PaperPilot 文翰 — 基于 Agentic RAG 与 GraphRAG 的学术文献智能问答系统"),
-    ("提交日期", "2026 年 11 月"),
-]
+# 队伍信息从 team-info.json 读取（参赛队直接编辑该 JSON 即可）
+_TEAM_JSON = os.path.join(os.path.dirname(os.path.abspath(__file__)), "team-info.json")
+with open(_TEAM_JSON, encoding="utf-8") as _f:
+    TEAM_INFO = [(f["key"], f["value"]) for f in json.load(_f)["fields"]]
 
 def team_info_flowables():
     fl = []
