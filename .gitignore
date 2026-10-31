@@ -49,3 +49,5 @@ next-env.d.ts
 models/e5-small/onnx/*.onnx
 public/models/
 demo-papers/*.pdf
+# 配置模板必须随仓库分发（无密钥）：!.env.example
+!.env.example
