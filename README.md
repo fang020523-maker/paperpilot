@@ -61,10 +61,11 @@
 ```bash
 npm install
 npm run fetch:models     # 预下载端侧嵌入模型 (~120MB, 走 hf-mirror, 可跳过)
-cp .env.example .env.local   # 填入 ZHIPU_API_KEY（必需）/ DEEPSEEK_API_KEY（可选）
+cp .env.example .env.local   # 填入 ZHIPU_API_KEY（推荐）/ DEEPSEEK_API_KEY（可选）
+npm run build && npm start   # 仓库已内置知识库快照：启动即得 15 篇/1355 块完整演示库
 ```
 
-> **无密钥也能跑**：系统自动进入离线开发模式（mock 生成 + 本地嵌入），全流水线可联调，界面会给出明确提示。
+> **无密钥也能跑**：系统自动进入离线开发模式（mock 生成 + 本地嵌入），全流水线可联调，界面会给出明确提示。快照中的向量由本地 ONNX 生成（384 维），任意机器加载即用；重新导入文献会自动更新快照。
 
 API 密钥获取：[智谱开放平台](https://open.bigmodel.cn/)（有免费额度，`glm-4-flash` / `glm-4v-flash` 免费）· [DeepSeek](https://platform.deepseek.com/)
 

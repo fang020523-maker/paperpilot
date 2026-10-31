@@ -41,7 +41,9 @@ yarn-error.log*
 next-env.d.ts
 
 # PaperPilot
-.data/
+.data/*
+!.data/knowledge-base.json
+# ↑ 知识库快照入仓：clone 后 npm start 即刻可演示（15篇/1355块含嵌入）
 .env.local
 .env*.local
 models/e5-small/onnx/*.onnx
