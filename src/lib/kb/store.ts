@@ -46,7 +46,9 @@ export class KnowledgeBase {
       for (const p of snap.papers ?? []) this.papers.set(p.id, p);
       for (const c of snap.chunks ?? []) {
         this.chunks.set(c.id, c);
-        this.bm25.add(c.id, `${c.contextPrefix ?? ""}\n${c.rawText}`);
+        // BM25 词面通道只用原文：LLM 中文前缀会稀释英文术语词频并引入跨论文
+        // 同质化噪声（A/B 实测 65% vs 95%）；前缀的价值在向量语义通道（chunk.text 已含前缀）
+        this.bm25.add(c.id, c.rawText);
       }
       for (const e of snap.entities ?? []) this.entities.set(e.id, e);
       for (const r of snap.relations ?? []) this.relations.set(r.id, r);
@@ -88,7 +90,8 @@ export class KnowledgeBase {
   addChunks(chunks: Chunk[]): void {
     for (const c of chunks) {
       this.chunks.set(c.id, c);
-      this.bm25.add(c.id, `${c.contextPrefix ?? ""}\n${c.rawText}`);
+      // 同 ensureLoaded：BM25 只索引原文，前缀留给向量通道
+      this.bm25.add(c.id, c.rawText);
     }
     this.scheduleSave();
   }

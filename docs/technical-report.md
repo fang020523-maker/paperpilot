@@ -71,7 +71,7 @@ PaperPilot 将这三个痛点分别映射为三项技术能力：**混合检索�
 ```
 
 - **HyDE**（arXiv:2212.10496）：假设答案与真实答案段落在嵌入空间中往往比"问题-答案"更接近，对术语类查询提升明显；
-- **Contextual Chunking**（Anthropic Contextual Retrieval, 2024）：切分时由 LLM 为每个分块生成一句"该片段在全文中的位置与作用"前缀，解决分块脱离上下文后的语义残缺；LLM 不可用时自动降级为章节标题前缀，保证管线永不中断；
+- **Contextual Chunking**（Anthropic Contextual Retrieval, 2024）：切分时由 LLM 为每个分块生成一句"该片段在全文中的位置与作用"前缀，解决分块脱离上下文后的语义残缺；LLM 不可用时自动降级为章节标题前缀，保证管线永不中断。**通道分工是我们自己的实测结论**：在 20 题黄金测试集上的 BM25 单通道 A/B 显示，中文概括前缀会稀释英文术语词频并引入跨论文同质化噪声（带前缀 65% vs 裸原文 95%）——因此前缀只注入向量语义通道（其增益所在），BM25 词面通道仅索引原文；混合管线整体 top-5 命中率 **20/20 = 100%**（`node scripts/eval-golden.mjs` 可复现回归）；
 - **Lost in the Middle**（arXiv:2307.03172）：LLM 对长上下文中部注意力最弱，重排阶段将最强证据蛇形分布于上下文首尾。
 
 ### 3.3 GraphRAG：轻量化落地的双模式检索
@@ -164,7 +164,8 @@ PaperPilot 将这三个痛点分别映射为三项技术能力：**混合检索�
 
 ## 8. 工程质量保障
 
-- **单元测试**：核心检索与分块模块 21 项测试全绿（BM25 中英混合分词与排序、结构化分块与元数据启发式、术语共现图谱与 Louvain 社区、Lost-in-the-Middle 蛇形重排），`npx vitest run` 一键回归；
+- **单元测试**：26 项测试全绿（BM25 中英混合分词与排序、结构化分块与元数据启发式、术语共现图谱与 Louvain 社区、Lost-in-the-Middle 蛇形重排、提示注入防护过滤），`npx vitest run` 一键回归；
+- **检索回归**：20 题黄金测试集（`docs/golden-testset.json`）经真实混合检索管线（MCP search_papers 通道）实测 top-5 命中率 **100%**，`node scripts/eval-golden.mjs` 可随知识库变更随时回归；
 - **CI**：GitHub Actions（npm ci → vitest → next build），每次推送自动验证类型、测试与构建；
 - **零联网构建**：系统字体栈替代 Google Fonts，国内网络环境构建稳定；
 - **生产验证**：`npm run build && npm start` 生产模式冒烟全绿（首页 35ms、快照恢复、MCP、真实对话流式）。

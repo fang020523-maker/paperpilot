@@ -40,11 +40,17 @@ function looksLikeHeading(line: string, medianLen: number): boolean {
 export function heuristicMetadata(pages: RawPage[]) {
   const first = pages[0]?.text ?? "";
   const lines = first.split("\n").map((l) => l.trim()).filter(Boolean);
-  // 标题：前几行中最长的行
+  // 标题：前几行中最长的行（排除许可声明/页眉噪声）
+  const NOISE = /^(provided proper attribution|this paper|preprint|arxiv|draft|copyright|licensed|creative commons|google hereby|the paper {1,3})/i;
   let title = "";
-  for (const l of lines.slice(0, 6)) {
+  for (const l of lines.slice(0, 8)) {
+    if (NOISE.test(l)) continue;
     if (l.length > title.length && l.length < 200 && !/^\d+$/.test(l)) title = l;
     if (title.length > 25) break;
+  }
+  // 全被噪声吞掉时兜底：取首个非噪声行
+  if (!title) {
+    title = lines.slice(0, 10).find((l) => !NOISE.test(l) && l.length > 10) ?? "未命名文献";
   }
   // 作者行：逗号/and 分隔的 Word 名字
   const authorLine = lines.find(

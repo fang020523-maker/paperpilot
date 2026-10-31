@@ -1,7 +1,7 @@
 node_modules
 .next
 .data
-models
+# models 保留在镜像内：本地 ONNX 嵌入开箱可用，运行时零外网依赖
 public/models
 demo-papers
 *.pdf

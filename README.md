@@ -85,6 +85,7 @@ npm run seed:demo        # 一键导入知识库（或直接在文献库页拖�
 3. **顶部切换 Agentic / 基线 / 隐私** 三档管线，隐私模式下检索全程在浏览器（WebGPU）完成，仅命中片段上云
 4. **知识图谱**：Louvain 社区着色、实体邻域高亮、点击查看 1 跳关系与证据
 5. **MCP**：`curl -X POST localhost:3000/api/mcp -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' -H "Content-Type: application/json"`
+6. **检索回归**：`node scripts/eval-golden.mjs` —— 20 题黄金测试集实测混合管线 top-5 命中率（当前 100%）；Contextual Chunking 通道分工 A/B 复现：`python scripts/ab-contextual.py`
 
 ## 📁 目录结构
 
@@ -135,6 +136,8 @@ Next.js 16 · React 19 · TypeScript · Tailwind CSS v4 · shadcn/ui · Vercel A
 docker build -t paperpilot . && docker run -p 3000:3000 -v pp-data:/app/.data --env-file .env.local paperpilot
 # 或裸机：npm run build && npm start && npm run seed:demo
 ```
+
+> 镜像已内置本地 ONNX 嵌入模型（`models/`，+120MB），隐私模式与离线嵌入开箱可用、运行时不依赖外网。
 
 **生产模式已实跑验证**：`npm run build && PORT=3001 npm start` —— 首页 35ms、知识库快照自动恢复（15 篇/1321 块/49 实体）、MCP 与全部页面 200、真实对话链路正常。Vercel 等无状态平台可跑但每次冷启动知识库为空，不建议用于评审演示。
 

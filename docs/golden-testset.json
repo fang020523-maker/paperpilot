@@ -1,0 +1,26 @@
+{
+  "_说明": "黄金测试集：每题含期望命中的论文标题关键词（命中任一即算 hit，top-5）。回归命令：node scripts/eval-golden.mjs（需 dev/prod 服务器运行中）。语料为 15 篇 RAG 领域原始论文（scripts/fetch-demo-papers.mjs）。",
+  "topK": 5,
+  "cases": [
+    { "q": "Self-RAG 通过什么机制控制检索时机？", "expect": ["SELF-RAG", "Self-RAG"] },
+    { "q": "CRAG 的检索评估器基于什么模型、参数量多大？", "expect": ["Corrective Retrieval"] },
+    { "q": "Adaptive-RAG 如何判断问题的复杂度？", "expect": ["Adaptive-RAG", "Adaptive- RAG", "Adaptive-"] },
+    { "q": "GraphRAG 的全局搜索以什么作为检索单元？", "expect": ["GraphRAG", "Local to Global", "Query-Focused"] },
+    { "q": "LightRAG 相比 GraphRAG 有什么优势？", "expect": ["LightRAG", "LIGHT RAG", "LIGHT-RAG"] },
+    { "q": "HyDE 如何在无标注数据下做稠密检索？", "expect": ["Zero-Shot", "HyDE"] },
+    { "q": "Lost in the Middle 指出 LLM 对上下文哪个位置注意力最弱？", "expect": ["Lost in the Middle"] },
+    { "q": "RAGAS 框架包含哪些评估指标？", "expect": ["Ragas", "RAGAS"] },
+    { "q": "RAPTOR 用什么结构组织文档层次？", "expect": ["RAPTOR"] },
+    { "q": "什么是 sufficient context，它与拒答有什么关系？", "expect": ["Sufficient Context"] },
+    { "q": "RAG 最初由谁在哪篇论文提出，解决什么任务？", "expect": ["Knowledge-Intensive", "Retrieval-Augmented Generation for"] },
+    { "q": "RAG 综述将 RAG 范式分为哪几个范式阶段？", "expect": ["Survey", "survey"] },
+    { "q": "Attention Is All You Need 提出了什么架构？", "expect": ["Attention", "Transformer", "attention"] },
+    { "q": "GPT-3 论文展示了什么核心能力？", "expect": ["Few-Shot", "Language Models"] },
+    { "q": "GPT-4 技术报告的主要内容和结论是什么？", "expect": ["GPT-4"] },
+    { "q": "哪些论文在 ASQA 数据集上做了评测？", "expect": ["SELF-RAG", "Corrective"] },
+    { "q": "reflection tokens 分为哪几类，分别什么作用？", "expect": ["SELF-RAG", "Self-RAG"] },
+    { "q": "查询重写在纠错式检索增强中起什么作用？", "expect": ["Corrective"] },
+    { "q": "in-context learning 上下文学习是在哪项工作里被系统展示的？", "expect": ["Few-Shot", "GPT-4"] },
+    { "q": "自动化评估 RAG 系统质量有哪些方法？", "expect": ["Ragas", "RAGAS", "Sufficient"] }
+  ]
+}
